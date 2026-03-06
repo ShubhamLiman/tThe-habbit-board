@@ -97,7 +97,7 @@ function AuthContent() {
 export default function AuthPage() {
   return (
     <div className="min-h-screen flex flex-col justify-center items-center bg-gray-50 dark:bg-gray-950 px-4 py-12 relative overflow-hidden">
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-500/10 dark:bg-cyan-500/5 rounded-full blur-[100px] pointer-events-none"></div>
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-150 h-150 bg-blue-500/10 dark:bg-cyan-500/5 rounded-full blur-[100px] pointer-events-none"></div>
 
       <a
         href="/"

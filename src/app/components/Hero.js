@@ -107,7 +107,7 @@ function Hero() {
       >
         <div className="max-w-4xl w-full flex flex-col md:flex-row gap-12 items-center">
           <div className="w-full md:w-1/2 text-center md:text-left">
-            <h2 className="font-oswald text-6xl md:text-8xl antialiased italic font-bold text-gray-200 dark:text-gray-800/50 uppercase tracking-tighter leading-none mb-[-20px] md:mb-[-30px] relative z-0">
+            <h2 className="font-oswald text-6xl md:text-8xl antialiased italic font-bold text-gray-200 dark:text-gray-800/50 uppercase tracking-tighter leading-none -mb-5 md:-mb-7.5 relative z-0">
               Mindset
             </h2>
             <h3 className="font-oswald text-4xl md:text-5xl antialiased italic font-bold text-gray-900 dark:text-white uppercase relative z-10">
