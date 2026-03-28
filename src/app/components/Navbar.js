@@ -18,7 +18,7 @@ export default function Navbar() {
             className="font-oswald text-3xl antialiased italic font-bold tracking-wide cursor-pointer"
           >
             <span className="text-gray-900 dark:text-white">The_Habit</span>
-            <span className="text-blue-500 dark:text-cyan-500">_board</span>
+            <span className="text-blue-500 dark:text-cyan-500">_Board</span>
           </a>
         </div>
 

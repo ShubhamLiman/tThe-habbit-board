@@ -13,7 +13,11 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className="scroll-smooth dark">
+    <html
+      lang="en"
+      className="scroll-smooth dark"
+      data-scroll-behavior="smooth"
+    >
       <body
         className={`${oswald.variable} font-sans antialiased bg-white dark:bg-black`}
       >

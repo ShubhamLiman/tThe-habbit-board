@@ -86,14 +86,14 @@ function Hero() {
 
         <div className="flex flex-col sm:flex-row gap-5 mt-4 w-full sm:w-auto font-oswald text-lg antialiased italic font-bold">
           <Link
-            href="/auth?mode=login"
+            href="/auth?mode=register"
             className="px-10 py-3 bg-blue-500 dark:bg-cyan-500 text-white dark:text-black rounded-sm hover:bg-blue-600 dark:hover:bg-cyan-400 transition-all shadow-[0_0_15px_rgba(59,130,246,0.3)] dark:shadow-[0_0_15px_rgba(6,182,212,0.3)] hover:scale-105 w-full sm:w-auto"
           >
             Register
           </Link>
 
           <Link
-            href="/auth?mode=register"
+            href="/auth?mode=login"
             className="px-10 py-3 bg-gray-900 dark:bg-white text-white dark:text-black rounded-sm hover:bg-gray-800 dark:hover:bg-gray-200 transition-all shadow-md w-full sm:w-auto"
           >
             Login
