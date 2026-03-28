@@ -1,6 +1,6 @@
 {
-  "name": "Command Center",
-  "short_name": "Command",
+  "name": "The Habbit Board",
+  "short_name": "H_B",
   "description": "Tactical Discipline Matrix",
   "start_url": "/dashboard",
   "display": "standalone",
