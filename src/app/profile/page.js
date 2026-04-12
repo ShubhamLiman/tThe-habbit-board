@@ -24,6 +24,20 @@ export default function ProfilePage() {
   const [confirmText, setConfirmText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  // --- SYSTEM CONTROLS STATE ---
+  const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
+
+  // --- TERMINATE SESSION ---
+  const handleLogout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      sessionStorage.clear(); // Purge local tactical cache
+      router.push("/"); // Teleport to login screen
+    } catch (error) {
+      console.error("Error terminating session:", error.message);
+    }
+  };
 
   // --- BOOT SEQUENCE ---
   useEffect(() => {
@@ -163,7 +177,7 @@ export default function ProfilePage() {
       {/* Background Grid */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none"></div>
 
-      <div className="max-w-5xl mx-auto relative z-10">
+      <div className="max-w-8xl mx-auto relative z-10">
         {/* Navigation */}
         <button
           onClick={() => router.push("/dashboard")}
@@ -230,9 +244,49 @@ export default function ProfilePage() {
                 <h2 className="text-xl font-bold text-gray-900 dark:text-white uppercase tracking-widest">
                   OP: {operativeName}
                 </h2>
-                <span className="text-xs text-gray-500 uppercase tracking-widest mt-1">
-                  Clearance Level: Alpha
-                </span>
+
+                {/* --- SYSTEM CONTROLS --- */}
+
+                <div className="flex flex-col sm:flex-row gap-4 m-3">
+                  <button
+                    onClick={() => setIsRulesModalOpen(true)}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:text-blue-500 dark:hover:text-cyan-500 font-bold uppercase tracking-widest transition-colors cursor-pointer border border-transparent hover:border-blue-500 dark:hover:border-cyan-500 rounded-sm"
+                  >
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    System Rules
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white font-bold uppercase tracking-widest transition-colors cursor-pointer border border-red-500/30 hover:border-red-500 rounded-sm group"
+                  >
+                    <svg
+                      className="w-5 h-5 text-red-500 group-hover:text-white transition-colors"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                      />
+                    </svg>
+                    Terminate Session
+                  </button>
+                </div>
               </div>
 
               {/* Profile Details Form */}
@@ -470,6 +524,160 @@ export default function ProfilePage() {
                 {isDeleting ? "Purging..." : "Abort Protocol"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {isRulesModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 dark:bg-black/80 backdrop-blur-sm p-4 transition-opacity">
+          <div className="w-full max-w-2xl bg-white dark:bg-black border border-gray-200 dark:border-gray-800 rounded-sm shadow-2xl p-6 md:p-10 relative max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => setIsRulesModalOpen(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-red-500 transition-colors"
+            >
+              <svg
+                className="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+
+            <div className="flex items-center gap-3 mb-2">
+              <svg
+                className="w-8 h-8 text-blue-500 dark:text-cyan-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                />
+              </svg>
+              <h2 className="text-3xl italic font-bold text-gray-900 dark:text-white uppercase">
+                System{" "}
+                <span className="text-blue-500 dark:text-cyan-500">
+                  Directives
+                </span>
+              </h2>
+            </div>
+            <p className="text-gray-500 dark:text-gray-400 italic text-sm tracking-widest uppercase mb-8 border-b border-gray-100 dark:border-gray-900 pb-4">
+              Read carefully. The algorithm does not compromise.
+            </p>
+
+            <div className="flex flex-col gap-6">
+              <div className="flex gap-4">
+                <span className="text-xl font-bold italic text-blue-500 dark:text-cyan-500">
+                  01
+                </span>
+                <div>
+                  <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wide">
+                    The Burden of Execution
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
+                    There are no push notifications, reminders, or hand-holding.
+                    The system waits for you. Showing up is entirely your
+                    responsibility.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <span className="text-xl font-bold italic text-blue-500 dark:text-cyan-500">
+                  02
+                </span>
+                <div>
+                  <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wide">
+                    Absolute Integrity
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
+                    This application relies completely on your honesty. The
+                    algorithm cannot verify your actions. Checking off a task
+                    you didn't do only sabotages your own rewiring.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <span className="text-xl font-bold italic text-blue-500 dark:text-cyan-500">
+                  03
+                </span>
+                <div>
+                  <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wide">
+                    Earned Forgiveness
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
+                    Discipline is rewarded. Every{" "}
+                    <strong>6 consecutive days</strong> of executing a core
+                    protocol generates 1 Global Shield.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <span className="text-xl font-bold italic text-blue-500 dark:text-cyan-500">
+                  04
+                </span>
+                <div>
+                  <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wide">
+                    Tactical Pauses
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
+                    <strong>1 Shield = 1 Grace Day.</strong> If you miss a day,
+                    the system will automatically consume a shield to freeze
+                    your streak and protect your progress.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <span className="text-xl font-bold italic text-red-500">
+                  05
+                </span>
+                <div>
+                  <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wide">
+                    Critical Failure
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
+                    If you miss a day and have zero shields in the bank, your
+                    streak shatters. You will be ruthlessly reset to your last
+                    major checkpoint (Day 21, Day 50, etc.).
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <span className="text-xl font-bold italic text-blue-500 dark:text-cyan-500">
+                  06
+                </span>
+                <div>
+                  <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wide">
+                    No Partial Credit
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
+                    If a protocol is a Routine with multiple sub-tasks, every
+                    single item must be checked off. Execute the entire
+                    sequence, or the day is forfeit.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setIsRulesModalOpen(false)}
+              className="mt-10 w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-black font-bold italic uppercase tracking-wide hover:bg-blue-500 dark:hover:bg-cyan-500 hover:text-white transition-all cursor-pointer rounded-sm"
+            >
+              Acknowledge & Proceed
+            </button>
           </div>
         </div>
       )}

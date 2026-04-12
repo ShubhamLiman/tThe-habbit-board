@@ -33,7 +33,7 @@ export default function Dashboard() {
   const [isRoutineMode, setIsRoutineMode] = useState(false);
   const [routineSteps, setRoutineSteps] = useState(["", "", ""]); // Start with 3 empty slots
 
-  const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
+  const [isHardMode, setIsHardMode] = useState(false);
 
   // --- TEMPORAL AUDIT: MIDNIGHT RESET LOGIC ---
   const getLocalDateString = () => {
@@ -135,6 +135,7 @@ export default function Dashboard() {
           let updatedShields = currentShields;
 
           // Process each protocol to check for missed days
+          // Process each protocol to check for missed days
           const auditedProtocols = protocols.map((protocol) => {
             const missedDays = calculateMissedDays(
               protocol.last_execution_date,
@@ -144,21 +145,29 @@ export default function Dashboard() {
             if (missedDays > 0) {
               auditTriggered = true;
 
-              // Calculate brutal penalty math
-              let remainingShields = updatedShields - missedDays;
               let newStreak = protocol.streak;
               let newCurrentDayIndex = protocol.current_day_index;
               let newDaysArray = [...(protocol.days_array || [])];
 
-              if (remainingShields < 0) {
-                // Shields breached. Break the streak.
+              // --- NEW: HARD MODE AUDIT ---
+              if (protocol.is_hard_mode) {
+                // HARD MODE: Instant death. No shield calculations.
                 newStreak = 0;
                 newCurrentDayIndex = 0;
-                newDaysArray = Array(protocol.target).fill("pending"); // Reset visual grid
-                updatedShields = 0;
+                newDaysArray = Array(protocol.target).fill("pending");
               } else {
-                // Shields held. Absorb the damage.
-                updatedShields = remainingShields;
+                // STANDARD MODE: Calculate shield damage
+                let remainingShields = updatedShields - missedDays;
+                if (remainingShields < 0) {
+                  // Shields breached. Break the streak.
+                  newStreak = 0;
+                  newCurrentDayIndex = 0;
+                  newDaysArray = Array(protocol.target).fill("pending");
+                  updatedShields = 0;
+                } else {
+                  // Shields held. Absorb the damage.
+                  updatedShields = remainingShields;
+                }
               }
 
               return {
@@ -166,7 +175,7 @@ export default function Dashboard() {
                 streak: newStreak,
                 current_day_index: newCurrentDayIndex,
                 days_array: newDaysArray,
-                _needsDbSync: true, // Flag to sync this to the mainframe
+                _needsDbSync: true,
               };
             }
             return protocol;
@@ -220,20 +229,6 @@ export default function Dashboard() {
     })
     .toUpperCase();
 
-  const handleLogout = async () => {
-    try {
-      // Tell Supabase to destroy the session tokens
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      sessionStorage.clear();
-      await supabase.auth.signOut();
-      // Teleport the user back to the Auth/Home page
-      router.push("/"); // Change to '/auth' if your login page is there
-    } catch (error) {
-      console.error("Error terminating session:", error.message);
-    }
-  };
-
   const handleAddProtocol = async (e) => {
     e.preventDefault();
     if (!newProtocolName.trim()) return;
@@ -282,7 +277,8 @@ export default function Dashboard() {
             is_routine: isRoutine,
             sub_tasks: formattedSubTasks,
             start_date: getLocalDateString(), // <-- ADD THIS LINE
-            last_execution_date: null, // Explicitly null until they execute
+            last_execution_date: null,
+            is_hard_mode: isHardMode, // Explicitly null until they execute
           },
         ])
         .select()
@@ -497,45 +493,6 @@ export default function Dashboard() {
     }
   };
 
-  const handleDeleteProtocol = async (protocolId, passcode) => {
-    try {
-      // 1. Get the current Operative's email
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error("Authentication link severed.");
-
-      // 2. SECURITY CHECK: Verify the passcode by attempting a silent login
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: user.email,
-        password: passcode,
-      });
-
-      if (authError) {
-        throw new Error("ACCESS DENIED: Incorrect Passcode.");
-      }
-
-      // 3. DATABASE INJECTION: Purge the protocol
-      const { error: deleteError } = await supabase
-        .from("core_protocols")
-        .delete()
-        .eq("id", protocolId);
-
-      if (deleteError) throw deleteError;
-
-      // 4. UPDATE UI: Remove the card from the screen
-      setCoreProtocols((protocols) =>
-        protocols.filter((p) => p.id !== protocolId),
-      );
-
-      return true; // Tells the card the deletion was successful
-    } catch (error) {
-      console.error("Abort sequence failed:", error.message);
-      throw error; // Tosses the error back to the card to display in the Red HUD
-    }
-  };
-
   // --- MANUAL OVERRIDE: DELETE DIRECTIVE ---
   const handleDeleteDirective = async (taskId) => {
     // 1. Optimistic UI Update
@@ -572,44 +529,6 @@ export default function Dashboard() {
             System Online. Awaiting execution.
           </p>
           <div className="flex gap-2 m-2">
-            <button
-              onClick={() => setIsRulesModalOpen(true)}
-              className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-blue-500 dark:hover:text-cyan-500 font-bold uppercase tracking-widest transition-colors cursor-pointer border border-gray-200 dark:border-gray-800 hover:border-blue-500 dark:hover:border-cyan-500 px-2 py-1 rounded-sm"
-            >
-              <svg
-                className="w-3.5 h-3.5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                ></path>
-              </svg>
-              System Rules
-            </button>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-red-500 font-bold uppercase tracking-widest transition-colors cursor-pointer border border-gray-200 dark:border-gray-800 hover:border-red-500 px-2 py-1 rounded-sm group"
-            >
-              <svg
-                className="w-3.5 h-3.5 text-gray-400 group-hover:text-red-500 transition-colors"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                />
-              </svg>
-              Terminate Session
-            </button>
             <button
               onClick={() => router.push("/profile")}
               className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-blue-500 dark:hover:text-cyan-500 font-bold uppercase tracking-widest transition-colors cursor-pointer border border-gray-200 dark:border-gray-800 hover:border-blue-500 dark:hover:border-cyan-500 px-2 py-1 rounded-sm"
@@ -829,6 +748,7 @@ export default function Dashboard() {
                   onUpdateRoutine={handleUpdateRoutine}
                   onUpdateName={handleUpdateProtocolName}
                   onUpdateProgress={handleUpdateProgress}
+                  isHardMode={protocol.is_hard_mode}
                 />
               </div>
             ))
@@ -839,161 +759,6 @@ export default function Dashboard() {
       {/* ========================================= */}
       {/* MODALS OVERLAYS */}
       {/* ========================================= */}
-
-      {isRulesModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 dark:bg-black/80 backdrop-blur-sm p-4 transition-opacity">
-          <div className="w-full max-w-2xl bg-white dark:bg-black border border-gray-200 dark:border-gray-800 rounded-sm shadow-2xl p-6 md:p-10 relative max-h-[90vh] overflow-y-auto">
-            <button
-              onClick={() => setIsRulesModalOpen(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-red-500 transition-colors"
-            >
-              <svg
-                className="w-6 h-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-
-            <div className="flex items-center gap-3 mb-2">
-              <svg
-                className="w-8 h-8 text-blue-500 dark:text-cyan-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                />
-              </svg>
-              <h2 className="text-3xl italic font-bold text-gray-900 dark:text-white uppercase">
-                System{" "}
-                <span className="text-blue-500 dark:text-cyan-500">
-                  Directives
-                </span>
-              </h2>
-            </div>
-            <p className="text-gray-500 dark:text-gray-400 italic text-sm tracking-widest uppercase mb-8 border-b border-gray-100 dark:border-gray-900 pb-4">
-              Read carefully. The algorithm does not compromise.
-            </p>
-
-            <div className="flex flex-col gap-6">
-              <div className="flex gap-4">
-                <span className="text-xl font-bold italic text-blue-500 dark:text-cyan-500">
-                  01
-                </span>
-                <div>
-                  <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wide">
-                    The Burden of Execution
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
-                    There are no push notifications, reminders, or hand-holding.
-                    The system waits for you. Showing up is entirely your
-                    responsibility.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-4">
-                <span className="text-xl font-bold italic text-blue-500 dark:text-cyan-500">
-                  02
-                </span>
-                <div>
-                  <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wide">
-                    Absolute Integrity
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
-                    This application relies completely on your honesty. The
-                    algorithm cannot verify your actions. Checking off a task
-                    you didn't do only sabotages your own rewiring.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-4">
-                <span className="text-xl font-bold italic text-blue-500 dark:text-cyan-500">
-                  03
-                </span>
-                <div>
-                  <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wide">
-                    Earned Forgiveness
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
-                    Discipline is rewarded. Every{" "}
-                    <strong>6 consecutive days</strong> of executing a core
-                    protocol generates 1 Global Shield.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-4">
-                <span className="text-xl font-bold italic text-blue-500 dark:text-cyan-500">
-                  04
-                </span>
-                <div>
-                  <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wide">
-                    Tactical Pauses
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
-                    <strong>1 Shield = 1 Grace Day.</strong> If you miss a day,
-                    the system will automatically consume a shield to freeze
-                    your streak and protect your progress.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-4">
-                <span className="text-xl font-bold italic text-red-500">
-                  05
-                </span>
-                <div>
-                  <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wide">
-                    Critical Failure
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
-                    If you miss a day and have zero shields in the bank, your
-                    streak shatters. You will be ruthlessly reset to your last
-                    major checkpoint (Day 21, Day 50, etc.).
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-4">
-                <span className="text-xl font-bold italic text-blue-500 dark:text-cyan-500">
-                  06
-                </span>
-                <div>
-                  <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wide">
-                    No Partial Credit
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
-                    If a protocol is a Routine with multiple sub-tasks, every
-                    single item must be checked off. Execute the entire
-                    sequence, or the day is forfeit.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setIsRulesModalOpen(false)}
-              className="mt-10 w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-black font-bold italic uppercase tracking-wide hover:bg-blue-500 dark:hover:bg-cyan-500 hover:text-white transition-all cursor-pointer rounded-sm"
-            >
-              Acknowledge & Proceed
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* 1. Add Protocol Modal */}
       {isProtocolModalOpen && (
@@ -1061,7 +826,39 @@ export default function Dashboard() {
                   />
                 </button>
               </div>
-
+              {/* --- NEW: HARD MODE TOGGLE --- */}
+              <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-900 py-4">
+                <div>
+                  <h4 className="text-sm italic font-bold text-red-500 uppercase tracking-wider flex items-center gap-2">
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      ></path>
+                    </svg>
+                    Zero-Tolerance Mode
+                  </h4>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Shields disabled. Miss one day, lose everything.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsHardMode(!isHardMode)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isHardMode ? "bg-red-500" : "bg-gray-300 dark:bg-gray-700"}`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isHardMode ? "translate-x-6" : "translate-x-1"}`}
+                  />
+                </button>
+              </div>
               {/* Dynamic Routine Steps Input */}
               {isRoutineMode && (
                 <div className="flex flex-col gap-3 bg-gray-50 dark:bg-gray-900/30 p-4 rounded-sm border border-gray-200 dark:border-gray-800">

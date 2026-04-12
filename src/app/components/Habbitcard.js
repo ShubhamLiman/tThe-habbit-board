@@ -18,9 +18,12 @@ export default function EscalatingHabitCard({
   onUpdateName,
   onUpdateRoutine,
   onUpdateProgress,
+  isHardMode,
 }) {
   const [target, setTarget] = useState(initialTarget ?? 21);
-  const [days, setDays] = useState(initialDaysArray ?? Array(21).fill("pending"));
+  const [days, setDays] = useState(
+    initialDaysArray ?? Array(21).fill("pending"),
+  );
   const [currentDayIndex, setCurrentDayIndex] = useState(initialDayIndex ?? 0);
   const [streak, setStreak] = useState(initialStreak ?? 0);
   const [achievements, setAchievements] = useState(initialAchievements ?? []);
@@ -144,12 +147,11 @@ export default function EscalatingHabitCard({
         current_day_index: currentDayIndex + 1,
         days_array: finalDaysArray,
         target: expansionAt21 ? 50 : expansionAt50 ? 100 : target,
-        achievements:
-          expansionAt21
-            ? [...achievements, "Foundation_Forged"]
-            : expansionAt50
-              ? [...achievements, "Deep_Wiring_Complete"]
-              : achievements,
+        achievements: expansionAt21
+          ? [...achievements, "Foundation_Forged"]
+          : expansionAt50
+            ? [...achievements, "Deep_Wiring_Complete"]
+            : achievements,
       },
       newStreak % 6 === 0 ? globalShields + 1 : undefined,
     );
@@ -328,6 +330,11 @@ export default function EscalatingHabitCard({
                   </svg>
                 </button>
               </h2>
+            )}
+            {isHardMode && (
+              <span className="px-2 py-0.5 border border-red-500/50 bg-red-500/10 text-red-500 text-[10px] font-bold uppercase tracking-widest rounded-sm animate-pulse">
+                Zero-Tolerance
+              </span>
             )}
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 tracking-widest uppercase mt-1">
