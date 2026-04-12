@@ -35,6 +35,29 @@ export default function Dashboard() {
 
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
 
+  // --- TEMPORAL AUDIT: MIDNIGHT RESET LOGIC ---
+  const getLocalDateString = () => {
+    const now = new Date();
+    const offset = now.getTimezoneOffset() * 60000;
+    return new Date(now.getTime() - offset).toISOString().split("T")[0];
+  };
+
+  const calculateMissedDays = (lastExecutionDateStr, startDateStr) => {
+    const todayStr = getLocalDateString();
+
+    if (!startDateStr || todayStr < startDateStr) return 0;
+
+    const baseline = lastExecutionDateStr
+      ? new Date(lastExecutionDateStr)
+      : new Date(startDateStr);
+    const today = new Date(todayStr);
+
+    const diffTime = Math.abs(today - baseline);
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+    return diffDays > 1 ? diffDays - 1 : 0;
+  };
+
   useEffect(() => {
     const bootSequence = async () => {
       // 1. Ask Supabase for the current active session
@@ -85,18 +108,8 @@ export default function Dashboard() {
         }
 
         // B. Fetch Core Protocols
-        const { data: protocols, error: protError } = await supabase
-          .from("core_protocols")
-          .select("*")
-          .order("created_at", { ascending: true });
-
-        if (protError) throw protError;
-        if (protocols) {
-          setCoreProtocols(protocols);
-          sessionStorage.setItem("coreProtocols", JSON.stringify(protocols)); // Update Cache
-        }
-
-        // C. Fetch Global Shields
+        // B. Fetch Global Shields FIRST (The audit needs this data)
+        let currentShields = 0;
         const { data: stats, error: statsError } = await supabase
           .from("user_stats")
           .select("global_shields")
@@ -105,7 +118,90 @@ export default function Dashboard() {
 
         if (statsError) throw statsError;
         if (stats && stats.global_shields !== undefined) {
-          setGlobalShields(stats.global_shields);
+          currentShields = stats.global_shields;
+          setGlobalShields(currentShields);
+        }
+
+        // C. Fetch Core Protocols & RUN MIDNIGHT AUDIT
+        const { data: protocols, error: protError } = await supabase
+          .from("core_protocols")
+          .select("*")
+          .order("created_at", { ascending: true });
+
+        if (protError) throw protError;
+
+        if (protocols) {
+          let auditTriggered = false;
+          let updatedShields = currentShields;
+
+          // Process each protocol to check for missed days
+          const auditedProtocols = protocols.map((protocol) => {
+            const missedDays = calculateMissedDays(
+              protocol.last_execution_date,
+              protocol.start_date,
+            );
+
+            if (missedDays > 0) {
+              auditTriggered = true;
+
+              // Calculate brutal penalty math
+              let remainingShields = updatedShields - missedDays;
+              let newStreak = protocol.streak;
+              let newCurrentDayIndex = protocol.current_day_index;
+              let newDaysArray = [...(protocol.days_array || [])];
+
+              if (remainingShields < 0) {
+                // Shields breached. Break the streak.
+                newStreak = 0;
+                newCurrentDayIndex = 0;
+                newDaysArray = Array(protocol.target).fill("pending"); // Reset visual grid
+                updatedShields = 0;
+              } else {
+                // Shields held. Absorb the damage.
+                updatedShields = remainingShields;
+              }
+
+              return {
+                ...protocol,
+                streak: newStreak,
+                current_day_index: newCurrentDayIndex,
+                days_array: newDaysArray,
+                _needsDbSync: true, // Flag to sync this to the mainframe
+              };
+            }
+            return protocol;
+          });
+
+          // If the audit caught a failure, silently update Supabase in the background
+          if (auditTriggered) {
+            auditedProtocols.forEach(async (p) => {
+              if (p._needsDbSync) {
+                await supabase
+                  .from("core_protocols")
+                  .update({
+                    streak: p.streak,
+                    current_day_index: p.current_day_index,
+                    days_array: p.days_array,
+                  })
+                  .eq("id", p.id);
+              }
+            });
+
+            // Update Global Shields if they took damage
+            if (updatedShields !== currentShields) {
+              await supabase
+                .from("user_stats")
+                .update({ global_shields: updatedShields })
+                .eq("id", user.id);
+              setGlobalShields(updatedShields);
+            }
+          }
+
+          setCoreProtocols(auditedProtocols);
+          sessionStorage.setItem(
+            "coreProtocols",
+            JSON.stringify(auditedProtocols),
+          );
         }
       } catch (error) {
         console.error("Failed to sync profile from mainframe:", error.message);
@@ -171,6 +267,7 @@ export default function Dashboard() {
       const initialDaysArray = Array(21).fill("pending");
 
       // 4. DATABASE INJECTION: Send payload to Supabase
+      // 4. DATABASE INJECTION: Send payload to Supabase
       const { data, error } = await supabase
         .from("core_protocols")
         .insert([
@@ -184,11 +281,12 @@ export default function Dashboard() {
             achievements: [],
             is_routine: isRoutine,
             sub_tasks: formattedSubTasks,
+            start_date: getLocalDateString(), // <-- ADD THIS LINE
+            last_execution_date: null, // Explicitly null until they execute
           },
         ])
-        .select() // Ask Supabase to return the newly generated row
+        .select()
         .single();
-
       if (error) throw error;
 
       // 5. UPDATE UI: Push the real database record into your dashboard
