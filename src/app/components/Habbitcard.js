@@ -36,6 +36,13 @@ export default function EscalatingHabitCard({
   const [isEditingRoutine, setIsEditingRoutine] = useState(false);
   const [editedTasks, setEditedTasks] = useState([]);
 
+  // --- EXACT TIMELINE SYNC (Fixes Phantom Saves) ---
+  const getLocalDateString = () => {
+    const now = new Date();
+    const offset = now.getTimezoneOffset() * 60000;
+    return new Date(now.getTime() - offset).toISOString().split("T")[0];
+  };
+
   const startEditingRoutine = () => {
     setEditedTasks([...dailyTasks]);
     setIsEditingRoutine(true);
@@ -49,6 +56,7 @@ export default function EscalatingHabitCard({
     }
     setIsEditingName(false);
   };
+
   const handleSaveRoutine = () => {
     // Filter out completely empty tasks so we don't save blanks
     const cleanedTasks = editedTasks.filter((t) => t.name.trim() !== "");
@@ -152,68 +160,13 @@ export default function EscalatingHabitCard({
           : expansionAt50
             ? [...achievements, "Deep_Wiring_Complete"]
             : achievements,
+        last_execution_date: getLocalDateString(), // <-- PHANTOM SAVE FIX INJECTED HERE
       },
       newStreak % 6 === 0 ? globalShields + 1 : undefined,
     );
   };
 
-  const handleFail = () => {
-    // Hoist all variables so they're accessible after the if/else blocks
-    let pausedDays = null;
-    let checkpoint = 0;
-    let newTarget = 21;
-    let resetDays = null;
-    const usedShield = globalShields > 0;
-
-    if (usedShield) {
-      setGlobalShields((prev) => prev - 1);
-      pausedDays = [...days];
-      pausedDays[currentDayIndex] = "paused";
-      setDays(pausedDays);
-      setCurrentDayIndex((prev) => prev + 1);
-
-      // Reset routine checklist for tomorrow even if paused
-      if (isRoutine)
-        setDailyTasks((tasks) =>
-          tasks.map((t) => ({ ...t, completedToday: false })),
-        );
-    } else {
-      if (achievements.includes("Deep_Wiring_Complete") || streak >= 50) {
-        checkpoint = 50;
-        newTarget = 100;
-      } else if (achievements.includes("Foundation_Forged") || streak >= 21) {
-        checkpoint = 21;
-        newTarget = 50;
-      }
-
-      setStreak(checkpoint);
-      setTarget(newTarget);
-      setCurrentDayIndex(checkpoint);
-
-      resetDays = Array(newTarget).fill("pending");
-      for (let i = 0; i < checkpoint; i++) {
-        resetDays[i] = "completed";
-      }
-      setDays(resetDays);
-
-      // Reset routine checklist
-      if (isRoutine)
-        setDailyTasks((tasks) =>
-          tasks.map((t) => ({ ...t, completedToday: false })),
-        );
-    }
-
-    onUpdateProgress(
-      protocolId,
-      {
-        streak: usedShield ? streak : checkpoint,
-        current_day_index: usedShield ? currentDayIndex + 1 : checkpoint,
-        days_array: usedShield ? pausedDays : resetDays,
-        target: usedShield ? target : newTarget,
-      },
-      usedShield ? globalShields - 1 : undefined,
-    );
-  };
+  // NOTE: handleFail has been intentionally purged from the system.
 
   const phaseName =
     target === 21
@@ -462,7 +415,7 @@ export default function EscalatingHabitCard({
                   className="flex items-center gap-3 cursor-pointer group p-1"
                 >
                   <div
-                    className={`w-5 h-5 flex-shrink-0 border-2 flex items-center justify-center transition-colors rounded-sm ${task.completedToday ? "bg-blue-500 border-blue-500 dark:bg-cyan-500 dark:border-cyan-500" : "border-gray-400 dark:border-gray-600 group-hover:border-blue-400 dark:group-hover:border-cyan-400"}`}
+                    className={`w-5 h-5 shrink-0 border-2 flex items-center justify-center transition-colors rounded-sm ${task.completedToday ? "bg-blue-500 border-blue-500 dark:bg-cyan-500 dark:border-cyan-500" : "border-gray-400 dark:border-gray-600 group-hover:border-blue-400 dark:group-hover:border-cyan-400"}`}
                   >
                     {task.completedToday && (
                       <svg
@@ -582,14 +535,6 @@ export default function EscalatingHabitCard({
           ) : (
             `Execute Day ${streak + 1}`
           )}
-        </button>
-
-        {/* Secondary Action: Fail / Miss */}
-        <button
-          onClick={handleFail}
-          className="w-full md:w-1/3 py-4 md:py-3 border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white font-bold italic text-lg md:text-base uppercase tracking-widest transition-all cursor-pointer rounded-sm active:scale-[0.98] select-none"
-        >
-          Miss Day
         </button>
       </div>
     </div>
