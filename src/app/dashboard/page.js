@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation"; // 1. Import the Router
 import { supabase } from "../../lib/supeabase.js";
 import EscalatingHabitCard from "../components/Habbitcard";
 import { LiveDirectiveCard } from "../components/LiveDirectiveCard.js";
+import OperationModal from "../components/modals/OperationModal.js";
+import DirectiveModal from "../components/modals/DirectiveModals.js";
+import ProtocolModal from "../components/modals/ProtocolModal.js";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -13,7 +16,6 @@ export default function Dashboard() {
   const [isCommandDockOpen, setIsCommandDockOpen] = useState(false);
 
   const [operativeName, setOperativeName] = useState("...");
-
   const [globalShields, setGlobalShields] = useState(0);
   const [isDirectivesOpen, setIsDirectivesOpen] = useState(true);
 
@@ -25,27 +27,9 @@ export default function Dashboard() {
   const [isProtocolModalOpen, setIsProtocolModalOpen] = useState(false);
   const [isDirectiveModalOpen, setIsDirectiveModalOpen] = useState(false);
 
-  // Form Inputs
-  const [newProtocolName, setNewProtocolName] = useState("");
-  const [newDirectiveName, setNewDirectiveName] = useState("");
-  const [directiveDays, setDirectiveDays] = useState(0);
-  const [directiveHours, setDirectiveHours] = useState(0);
-  const [directiveMinutes, setDirectiveMinutes] = useState(0);
-
-  // --- ADD TO DASHBOARD STATE ---
-  const [isRoutineMode, setIsRoutineMode] = useState(false);
-  const [routineSteps, setRoutineSteps] = useState(["", "", ""]); // Start with 3 empty slots
-
-  const [isHardMode, setIsHardMode] = useState(false);
-
   // --- ACTIVE OPERATIONS STATE ---
   const [activeOperations, setActiveOperations] = useState([]);
   const [isOperationModalOpen, setIsOperationModalOpen] = useState(false);
-
-  // Operation Form Inputs
-  const [newOpName, setNewOpName] = useState("");
-  const [newOpTarget, setNewOpTarget] = useState(50);
-  const [selectedProtocols, setSelectedProtocols] = useState([]); // Stores IDs of protocols to attach
 
   // --- HUD COLLAPSE STATES ---
   const [isIndexOpen, setIsIndexOpen] = useState(false);
@@ -256,12 +240,13 @@ export default function Dashboard() {
     })
     .toUpperCase();
 
-  const handleAddProtocol = async (e) => {
-    e.preventDefault();
-    if (!newProtocolName.trim()) return;
-
+  const handleAddProtocol = async (
+    name,
+    isRoutineMode,
+    routineSteps,
+    isHardMode,
+  ) => {
     try {
-      // 1. SECURE AUTHORIZATION: Verify Operative Identity
       const {
         data: { user },
         error: authError,
@@ -273,10 +258,8 @@ export default function Dashboard() {
         return;
       }
 
-      // 2. FORMAT ROUTINE DATA: Clean up empty steps
       const cleanedSteps = routineSteps.filter((step) => step.trim() !== "");
       const isRoutine = isRoutineMode && cleanedSteps.length > 0;
-
       const formattedSubTasks = isRoutine
         ? cleanedSteps.map((step, index) => ({
             id: index,
@@ -285,17 +268,14 @@ export default function Dashboard() {
           }))
         : [];
 
-      // 3. PREPARE MATRIX: Generate the starting 21-day array
       const initialDaysArray = Array(21).fill("pending");
 
-      // 4. DATABASE INJECTION: Send payload to Supabase
-      // 4. DATABASE INJECTION: Send payload to Supabase
       const { data, error } = await supabase
         .from("core_protocols")
         .insert([
           {
             user_id: user.id,
-            name: newProtocolName,
+            name: name,
             target: 21,
             streak: 0,
             current_day_index: 0,
@@ -303,22 +283,16 @@ export default function Dashboard() {
             achievements: [],
             is_routine: isRoutine,
             sub_tasks: formattedSubTasks,
-            start_date: getLocalDateString(), // <-- ADD THIS LINE
+            start_date: getLocalDateString(),
             last_execution_date: null,
-            is_hard_mode: isHardMode, // Explicitly null until they execute
+            is_hard_mode: isHardMode,
           },
         ])
         .select()
         .single();
       if (error) throw error;
 
-      // 5. UPDATE UI: Push the real database record into your dashboard
       setCoreProtocols([...coreProtocols, data]);
-
-      // 6. RESET MODAL
-      setNewProtocolName("");
-      setIsRoutineMode(false);
-      setRoutineSteps(["", "", ""]);
       setIsProtocolModalOpen(false);
     } catch (error) {
       console.error("Failed to initialize protocol:", error.message);
@@ -326,122 +300,86 @@ export default function Dashboard() {
     }
   };
   // --- INITIALIZE OPERATION ---
-  const handleAddOperation = async (e) => {
-    e.preventDefault();
-    if (!newOpName.trim() || selectedProtocols.length === 0) {
-      alert("Operation requires a name and at least one attached protocol.");
-      return;
-    }
-
+  // Notice we now pass parameters into this function
+  const handleAddOperation = async (opName, opTarget, selectedIds) => {
     try {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      // 1. Create the Operation in the database
       const { data: newOp, error: opError } = await supabase
         .from("active_operations")
         .insert([
-          {
-            user_id: user.id,
-            name: newOpName,
-            target_days: Number(newOpTarget),
-          },
+          { user_id: user.id, name: opName, target_days: Number(opTarget) },
         ])
         .select()
         .single();
 
       if (opError) throw opError;
 
-      // 2. Attach the selected protocols (Update their operation_id)
       const { error: attachError } = await supabase
         .from("core_protocols")
         .update({ operation_id: newOp.id })
-        .in("id", selectedProtocols); // Updates all selected IDs at once
+        .in("id", selectedIds);
 
       if (attachError) throw attachError;
 
-      // 3. Update Local State
       setActiveOperations([...activeOperations, newOp]);
 
       const updatedProtocols = coreProtocols.map((p) =>
-        selectedProtocols.includes(p.id) ? { ...p, operation_id: newOp.id } : p,
+        selectedIds.includes(p.id) ? { ...p, operation_id: newOp.id } : p,
       );
       setCoreProtocols(updatedProtocols);
       sessionStorage.setItem("coreProtocols", JSON.stringify(updatedProtocols));
-
-      // 4. Reset Modal
-      setNewOpName("");
-      setNewOpTarget(50);
-      setSelectedProtocols([]);
-      setIsOperationModalOpen(false);
     } catch (error) {
       console.error("Failed to initialize Operation:", error.message);
-      alert("System Error: Could not commit Operation to mainframe.");
     }
   };
 
-  const handleRoutineStepChange = (index, value) => {
-    const newSteps = [...routineSteps];
-    newSteps[index] = value;
-    setRoutineSteps(newSteps);
-  };
-  const handleAddDirective = async (e) => {
-    e.preventDefault();
-    if (!newDirectiveName.trim()) return;
-
-    // 1. Calculate the total time in milliseconds
+  const handleAddDirective = async (
+    name,
+    directiveDays,
+    directiveHours,
+    directiveMinutes,
+  ) => {
     const timeToAddMs =
       Number(directiveDays) * 24 * 60 * 60 * 1000 +
       Number(directiveHours) * 60 * 60 * 1000 +
       Number(directiveMinutes) * 60 * 1000;
 
-    // Prevent submission if the timer is 0
     if (timeToAddMs === 0) {
       alert("System Error: Directive requires a valid time duration.");
       return;
     }
 
-    // 2. Generate the exact future expiration timestamp
     const deadlineTimestamp = new Date(Date.now() + timeToAddMs).toISOString();
 
     try {
-      // 3. SECURE AUTHORIZATION: Get the active Operative's ID
       const {
         data: { user },
         error: authError,
       } = await supabase.auth.getUser();
       if (authError || !user) {
-        alert(
-          "Authentication lost. Re-establish connection to submit directives.",
-        );
+        alert("Authentication lost.");
         return;
       }
 
-      // 4. DATABASE INJECTION: Send to Supabase
       const { data, error } = await supabase
         .from("temporary_directives")
         .insert([
           {
-            user_id: user.id, // Required by your Row Level Security policies
-            name: newDirectiveName,
+            user_id: user.id,
+            name: name,
             valid_until: deadlineTimestamp,
             completed: false,
           },
         ])
-        .select() // Tells Supabase to hand the newly created row back to us
+        .select()
         .single();
 
       if (error) throw error;
 
-      // 5. UPDATE UI: Push the real database record (with its true UUID) into your array
       setSimpleTasks((prevTasks) => [...prevTasks, data]);
-
-      // 6. Reset the form
-      setNewDirectiveName("");
-      setDirectiveDays(0);
-      setDirectiveHours(0);
-      setDirectiveMinutes(0);
       setIsDirectiveModalOpen(false);
     } catch (error) {
       console.error("System Failure:", error.message);
@@ -869,7 +807,6 @@ export default function Dashboard() {
         </div>
 
         {/* CORE PROTOCOLS */}
-        {/* CORE PROTOCOLS */}
         <div className="order-1 lg:col-span-8 flex flex-col gap-6 md:gap-8">
           <div className="flex justify-between items-center border-b border-gray-200 dark:border-gray-800 pb-2">
             <h2 className="text-2xl italic font-bold text-gray-900 dark:text-white uppercase">
@@ -941,6 +878,7 @@ export default function Dashboard() {
                   onUpdateName={handleUpdateProtocolName}
                   onUpdateProgress={handleUpdateProgress}
                   isHardMode={protocol.is_hard_mode}
+                  lastExecutionDate={protocol.last_execution_date}
                 />
               </div>
             ))
@@ -954,346 +892,30 @@ export default function Dashboard() {
 
       {/* 1. Add Protocol Modal */}
       {isProtocolModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 dark:bg-black/80 backdrop-blur-sm p-4 transition-opacity">
-          <div className="w-full max-w-lg bg-white dark:bg-black border border-gray-200 dark:border-gray-800 rounded-sm shadow-2xl p-8 relative max-h-[90vh] overflow-y-auto">
-            <button
-              onClick={() => setIsProtocolModalOpen(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-red-500 transition-colors"
-            >
-              <svg
-                className="w-6 h-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-
-            <h2 className="text-3xl italic font-bold text-gray-900 dark:text-white uppercase mb-2">
-              New{" "}
-              <span className="text-blue-500 dark:text-cyan-500">Protocol</span>
-            </h2>
-            <p className="text-gray-500 dark:text-gray-400 italic text-sm tracking-widest uppercase mb-6">
-              Establish a new 21-day neural rewrite.
-            </p>
-
-            <form onSubmit={handleAddProtocol} className="flex flex-col gap-6">
-              <div className="flex flex-col">
-                <label className="text-sm text-gray-500 dark:text-gray-400 italic mb-1 uppercase tracking-wider">
-                  Protocol Name
-                </label>
-                <input
-                  type="text"
-                  value={newProtocolName}
-                  onChange={(e) => setNewProtocolName(e.target.value)}
-                  placeholder="e.g. Morning Physical Protocol"
-                  className="bg-transparent border-b-2 border-gray-300 dark:border-gray-800 py-2 text-xl italic font-bold text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 dark:focus:border-cyan-500 transition-colors"
-                  autoFocus
-                />
-              </div>
-
-              {/* Routine Toggle */}
-              <div className="flex items-center justify-between border-t border-b border-gray-100 dark:border-gray-900 py-4">
-                <div>
-                  <h4 className="text-sm italic font-bold text-gray-900 dark:text-white uppercase tracking-wider">
-                    Routine Wrapper
-                  </h4>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Require multiple sub-tasks to be checked off daily.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsRoutineMode(!isRoutineMode)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isRoutineMode ? "bg-blue-500 dark:bg-cyan-500" : "bg-gray-300 dark:bg-gray-700"}`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isRoutineMode ? "translate-x-6" : "translate-x-1"}`}
-                  />
-                </button>
-              </div>
-              {/* --- NEW: HARD MODE TOGGLE --- */}
-              <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-900 py-4">
-                <div>
-                  <h4 className="text-sm italic font-bold text-red-500 uppercase tracking-wider flex items-center gap-2">
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                      ></path>
-                    </svg>
-                    Zero-Tolerance Mode
-                  </h4>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Shields disabled. Miss one day, lose everything.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsHardMode(!isHardMode)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isHardMode ? "bg-red-500" : "bg-gray-300 dark:bg-gray-700"}`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isHardMode ? "translate-x-6" : "translate-x-1"}`}
-                  />
-                </button>
-              </div>
-              {/* Dynamic Routine Steps Input */}
-              {isRoutineMode && (
-                <div className="flex flex-col gap-3 bg-gray-50 dark:bg-gray-900/30 p-4 rounded-sm border border-gray-200 dark:border-gray-800">
-                  <label className="text-sm text-gray-500 dark:text-gray-400 italic uppercase tracking-wider">
-                    Checklist Items
-                  </label>
-                  {routineSteps.map((step, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <span className="text-gray-400 text-sm font-bold">
-                        {index + 1}.
-                      </span>
-                      <input
-                        type="text"
-                        value={step}
-                        onChange={(e) =>
-                          handleRoutineStepChange(index, e.target.value)
-                        }
-                        placeholder={`e.g. ${index === 0 ? "5km Run" : index === 1 ? "100 Pushups" : "Cold Shower"}`}
-                        className="w-full bg-transparent border-b border-gray-300 dark:border-gray-700 py-1 text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 dark:focus:border-cyan-500 transition-colors"
-                      />
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setRoutineSteps([...routineSteps, ""])}
-                    className="text-xs text-blue-500 dark:text-cyan-500 font-bold uppercase tracking-widest mt-2 hover:text-blue-600 dark:hover:text-cyan-400 self-start cursor-pointer"
-                  >
-                    + Add Another Step
-                  </button>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                className="mt-2 w-full py-4 bg-blue-500 dark:bg-cyan-500 text-white dark:text-black font-bold italic uppercase tracking-wide hover:bg-blue-600 dark:hover:bg-cyan-400 transition-all cursor-pointer rounded-sm"
-              >
-                Commit to System
-              </button>
-            </form>
-          </div>
-        </div>
+        <ProtocolModal
+          isOpen={isProtocolModalOpen}
+          onClose={() => setIsProtocolModalOpen(false)}
+          onCommence={handleAddProtocol}
+        />
       )}
 
       {/* 2. Add Temporary Directive Modal */}
       {isDirectiveModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 dark:bg-black/80 backdrop-blur-sm p-4 transition-opacity">
-          <div className="w-full max-w-lg bg-white dark:bg-black border border-gray-200 dark:border-gray-800 rounded-sm shadow-2xl p-8 relative">
-            <h2 className="text-3xl italic font-bold text-gray-900 dark:text-white uppercase mb-2">
-              New{" "}
-              <span className="text-blue-500 dark:text-cyan-500">
-                Directive
-              </span>
-            </h2>
-            <p className="text-gray-500 dark:text-gray-400 italic text-sm tracking-widest uppercase mb-8">
-              Add a temporary task to the queue.
-            </p>
-
-            <form onSubmit={handleAddDirective} className="flex flex-col gap-6">
-              <div className="flex flex-col">
-                <label className="text-sm text-gray-500 dark:text-gray-400 italic mb-1 uppercase tracking-wider">
-                  Directive Objective
-                </label>
-                <input
-                  type="text"
-                  value={newDirectiveName}
-                  onChange={(e) => setNewDirectiveName(e.target.value)}
-                  placeholder="e.g. Schedule Dentist Appointment"
-                  className="bg-transparent border-b-2 border-gray-300 dark:border-gray-800 py-2 text-xl italic font-bold text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 dark:focus:border-cyan-500 transition-colors"
-                  autoFocus
-                />
-              </div>
-              {/* --- NEW: COUNTDOWN TIMER UI --- */}
-              <div className="flex flex-col">
-                <label className="text-sm text-gray-500 dark:text-gray-400 italic mb-3 uppercase tracking-wider">
-                  Time Allocation (Countdown)
-                </label>
-                <div className="flex gap-4">
-                  {/* Days */}
-                  <div className="flex-1 flex flex-col relative group">
-                    <input
-                      type="number"
-                      min="0"
-                      value={directiveDays}
-                      onChange={(e) => setDirectiveDays(e.target.value)}
-                      className="w-full bg-transparent border-b-2 border-gray-300 dark:border-gray-800 py-2 text-2xl italic font-bold text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 dark:focus:border-cyan-500 transition-colors text-center"
-                    />
-                    <span className="text-[10px] text-gray-400 group-focus-within:text-blue-500 dark:group-focus-within:text-cyan-500 uppercase tracking-widest mt-1 text-center transition-colors">
-                      Days
-                    </span>
-                  </div>
-
-                  {/* Hours */}
-                  <div className="flex-1 flex flex-col relative group">
-                    <input
-                      type="number"
-                      min="0"
-                      max="23"
-                      value={directiveHours}
-                      onChange={(e) => setDirectiveHours(e.target.value)}
-                      className="w-full bg-transparent border-b-2 border-gray-300 dark:border-gray-800 py-2 text-2xl italic font-bold text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 dark:focus:border-cyan-500 transition-colors text-center"
-                    />
-                    <span className="text-[10px] text-gray-400 group-focus-within:text-blue-500 dark:group-focus-within:text-cyan-500 uppercase tracking-widest mt-1 text-center transition-colors">
-                      Hours
-                    </span>
-                  </div>
-
-                  {/* Minutes */}
-                  <div className="flex-1 flex flex-col relative group">
-                    <input
-                      type="number"
-                      min="0"
-                      max="59"
-                      value={directiveMinutes}
-                      onChange={(e) => setDirectiveMinutes(e.target.value)}
-                      className="w-full bg-transparent border-b-2 border-gray-300 dark:border-gray-800 py-2 text-2xl italic font-bold text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 dark:focus:border-cyan-500 transition-colors text-center"
-                    />
-                    <span className="text-[10px] text-gray-400 group-focus-within:text-blue-500 dark:group-focus-within:text-cyan-500 uppercase tracking-widest mt-1 text-center transition-colors">
-                      Mins
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <button
-                type="submit"
-                className="mt-4 w-full py-4 bg-blue-500 dark:bg-cyan-500 text-white dark:text-black font-bold italic uppercase tracking-wide hover:bg-blue-600 dark:hover:bg-cyan-400 transition-all cursor-pointer rounded-sm"
-              >
-                Add Directive
-              </button>
-            </form>
-          </div>
-        </div>
+        <DirectiveModal
+          isOpen={isDirectiveModalOpen}
+          onClose={() => setIsDirectiveModalOpen(false)}
+          onCommence={handleAddDirective}
+        />
       )}
 
       {/* 3. Add Operation Modal */}
       {isOperationModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 dark:bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg bg-white dark:bg-black border border-gray-200 dark:border-gray-800 rounded-sm shadow-2xl p-8 relative">
-            <button
-              onClick={() => setIsOperationModalOpen(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-red-500 transition-colors"
-            >
-              <svg
-                className="w-6 h-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-
-            <h2 className="text-3xl italic font-bold text-gray-900 dark:text-white uppercase mb-2">
-              New{" "}
-              <span className="text-blue-500 dark:text-cyan-500">
-                Operation
-              </span>
-            </h2>
-            <p className="text-gray-500 dark:text-gray-400 italic text-sm tracking-widest uppercase mb-6">
-              Group protocols into a macro-objective.
-            </p>
-
-            <form onSubmit={handleAddOperation} className="flex flex-col gap-6">
-              <div className="flex flex-col">
-                <label className="text-sm text-gray-500 dark:text-gray-400 italic mb-1 uppercase tracking-wider">
-                  Operation Callsign
-                </label>
-                <input
-                  type="text"
-                  value={newOpName}
-                  onChange={(e) => setNewOpName(e.target.value)}
-                  placeholder="e.g. Operation: Ironclad"
-                  className="bg-transparent border-b-2 border-gray-300 dark:border-gray-800 py-2 text-xl italic font-bold text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 dark:focus:border-cyan-500"
-                />
-              </div>
-
-              <div className="flex flex-col">
-                <label className="text-sm text-gray-500 dark:text-gray-400 italic mb-1 uppercase tracking-wider">
-                  Target Days (Milestone)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={newOpTarget}
-                  onChange={(e) => setNewOpTarget(e.target.value)}
-                  className="bg-transparent border-b-2 border-gray-300 dark:border-gray-800 py-2 text-xl italic font-bold text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 dark:focus:border-cyan-500"
-                />
-              </div>
-
-              <div className="flex flex-col gap-2 bg-gray-50 dark:bg-gray-900/30 p-4 border border-gray-200 dark:border-gray-800 rounded-sm">
-                <label className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider border-b border-gray-200 dark:border-gray-800 pb-2 mb-2">
-                  Attach Protocols
-                </label>
-                {/* Only show protocols that don't already belong to an operation */}
-                {coreProtocols.filter((p) => !p.operation_id).length === 0 ? (
-                  <p className="text-xs text-gray-500 italic">
-                    No free protocols available.
-                  </p>
-                ) : (
-                  coreProtocols
-                    .filter((p) => !p.operation_id)
-                    .map((p) => (
-                      <label
-                        key={p.id}
-                        className="flex items-center gap-3 cursor-pointer group"
-                      >
-                        <input
-                          type="checkbox"
-                          className="w-4 h-4 accent-blue-500 dark:accent-cyan-500"
-                          checked={selectedProtocols.includes(p.id)}
-                          onChange={(e) => {
-                            if (e.target.checked)
-                              setSelectedProtocols([
-                                ...selectedProtocols,
-                                p.id,
-                              ]);
-                            else
-                              setSelectedProtocols(
-                                selectedProtocols.filter((id) => id !== p.id),
-                              );
-                          }}
-                        />
-                        <span className="text-sm text-gray-700 dark:text-gray-300 font-bold uppercase tracking-wide group-hover:text-blue-500 dark:group-hover:text-cyan-500 transition-colors">
-                          {p.name}
-                        </span>
-                      </label>
-                    ))
-                )}
-              </div>
-
-              <button
-                type="submit"
-                className="mt-2 w-full py-4 bg-blue-500 dark:bg-cyan-500 text-white dark:text-black font-bold italic uppercase tracking-wide hover:bg-blue-600 dark:hover:bg-cyan-400 transition-all cursor-pointer rounded-sm"
-              >
-                Commence Operation
-              </button>
-            </form>
-          </div>
-        </div>
+        <OperationModal
+          isOpen={isOperationModalOpen}
+          onClose={() => setIsOperationModalOpen(false)}
+          availableProtocols={coreProtocols.filter((p) => !p.operation_id)}
+          onCommence={handleAddOperation}
+        />
       )}
 
       {/* ========================================= */}

@@ -19,6 +19,7 @@ export default function EscalatingHabitCard({
   onUpdateRoutine,
   onUpdateProgress,
   isHardMode,
+  lastExecutionDate,
 }) {
   const [target, setTarget] = useState(initialTarget ?? 21);
   const [days, setDays] = useState(
@@ -35,6 +36,10 @@ export default function EscalatingHabitCard({
   const [editedName, setEditedName] = useState(name);
   const [isEditingRoutine, setIsEditingRoutine] = useState(false);
   const [editedTasks, setEditedTasks] = useState([]);
+  const [localLastExecution, setLocalLastExecution] =
+    useState(lastExecutionDate);
+
+  // The Temporal Lock Logic
 
   // --- EXACT TIMELINE SYNC (Fixes Phantom Saves) ---
   const getLocalDateString = () => {
@@ -42,7 +47,8 @@ export default function EscalatingHabitCard({
     const offset = now.getTimezoneOffset() * 60000;
     return new Date(now.getTime() - offset).toISOString().split("T")[0];
   };
-
+  const todayStr = getLocalDateString();
+  const isExecutedToday = localLastExecution === todayStr;
   const startEditingRoutine = () => {
     setEditedTasks([...dailyTasks]);
     setIsEditingRoutine(true);
@@ -103,7 +109,7 @@ export default function EscalatingHabitCard({
   };
 
   const handleExecute = () => {
-    if (isExecutionLocked) return; // Prevent execution if locked
+    if (isExecutionLocked || isExecutedToday) return;
 
     const newStreak = streak + 1;
     setStreak(newStreak);
@@ -147,7 +153,7 @@ export default function EscalatingHabitCard({
       : expansionAt50
         ? [...newDays, ...Array(50).fill("pending")]
         : newDays;
-
+    setLocalLastExecution(getLocalDateString());
     onUpdateProgress(
       protocolId,
       {
@@ -358,7 +364,6 @@ export default function EscalatingHabitCard({
         </div>
       </div>
 
-      {/* --- NEW: ROUTINE CHECKLIST UI --- */}
       {/* --- ROUTINE CHECKLIST UI --- */}
       {isRoutine && (
         <div className="mb-6 bg-gray-50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-800 p-4 rounded-sm transition-all">
@@ -506,19 +511,19 @@ export default function EscalatingHabitCard({
         {/* Primary Action: Execute */}
         <button
           onClick={handleExecute}
-          disabled={isExecutionLocked}
-          className={`w-full md:flex-1 py-4 md:py-3 text-lg md:text-base font-bold italic uppercase tracking-wide transition-all shadow-lg rounded-sm flex items-center justify-center gap-2 active:scale-[0.98] select-none
-            ${
-              isExecutionLocked
-                ? "bg-gray-200 dark:bg-gray-800 text-gray-400 dark:text-gray-600 cursor-not-allowed"
-                : "bg-blue-500 dark:bg-cyan-500 text-white dark:text-black hover:bg-blue-600 dark:hover:bg-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.3)] cursor-pointer"
-            }
-          `}
+          disabled={isExecutionLocked || isExecutedToday}
+          className={`w-full mt-6 py-4 font-bold italic uppercase tracking-widest rounded-sm transition-all duration-300 flex items-center justify-center gap-2 ${
+            isExecutedToday
+              ? "bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700" // LOCKED STATE
+              : isExecutionLocked
+                ? "bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed" // ROUTINE NOT FINISHED
+                : "bg-blue-500 dark:bg-cyan-500 text-white dark:text-black hover:bg-blue-600 dark:hover:bg-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.3)] hover:shadow-[0_0_25px_rgba(6,182,212,0.6)] cursor-pointer" // READY TO FIRE
+          }`}
         >
-          {isExecutionLocked ? (
+          {isExecutedToday ? (
             <>
               <svg
-                className="w-5 h-5 md:w-6 md:h-6"
+                className="w-5 h-5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -527,13 +532,19 @@ export default function EscalatingHabitCard({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth="2"
-                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                  d="M5 13l4 4L19 7"
                 />
               </svg>
-              Complete Sub-Tasks
+              Protocol Secured
             </>
+          ) : isRoutine ? (
+            isExecutionLocked ? (
+              "Complete Routine to Unlock"
+            ) : (
+              "Execute Protocol"
+            )
           ) : (
-            `Execute Day ${streak + 1}`
+            "Execute Protocol"
           )}
         </button>
       </div>
