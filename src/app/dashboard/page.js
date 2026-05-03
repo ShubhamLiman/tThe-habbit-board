@@ -31,8 +31,9 @@ export default function Dashboard() {
   const [activeOperations, setActiveOperations] = useState([]);
   const [isOperationModalOpen, setIsOperationModalOpen] = useState(false);
 
-  // --- HUD COLLAPSE STATES ---
-  const [isIndexOpen, setIsIndexOpen] = useState(false);
+  // --- MOBILE VIEW CONTROLLER ---
+  // Controls which tab is active on smartphones (protocols, directives, or index)
+  const [mobileView, setMobileView] = useState("protocols");
 
   // --- TEMPORAL AUDIT: MIDNIGHT RESET LOGIC ---
   const getLocalDateString = () => {
@@ -532,7 +533,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 px-4 py-8 md:px-12 md:py-12 font-oswald relative overflow-hidden">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 px-4 py-8 md:px-12 md:py-12 pb-28 md:pb-12 font-oswald relative overflow-hidden">
       <header className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-end mb-8 border-b border-gray-200 dark:border-gray-800 pb-4 gap-4">
         {/* Left: Identity & Date */}
         <div>
@@ -691,55 +692,12 @@ export default function Dashboard() {
       })}
       {/* --- MAIN GRID LAYOUT --- */}
       <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
-        {/* TEMPORARY DIRECTIVES */}
-        <div className="order-2 lg:col-span-4 flex flex-col gap-4 md:gap-8">
-          {coreProtocols.length > 0 && (
-            <div className="bg-white dark:bg-black border border-gray-200 dark:border-gray-800 rounded-sm shadow-lg p-2">
-              <button
-                onClick={() => setIsIndexOpen(!isIndexOpen)}
-                className="w-full flex justify-between items-center p-4 cursor-pointer group"
-              >
-                <h2 className="text-xl italic font-bold text-gray-900 dark:text-white uppercase tracking-wide">
-                  System{" "}
-                  <span className="text-blue-500 dark:text-cyan-500">
-                    Index
-                  </span>
-                </h2>
-                <svg
-                  className={`w-5 h-5 text-gray-400 group-hover:text-blue-500 dark:group-hover:text-cyan-500 transition-transform duration-300 ${isIndexOpen ? "rotate-180" : ""}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </button>
-              <div
-                className={`overflow-hidden transition-all duration-300 ease-in-out ${isIndexOpen ? "max-h-125 opacity-100 border-t border-gray-100 dark:border-gray-900" : "max-h-0 opacity-0"}`}
-              >
-                <div className="p-5 flex flex-col gap-3 max-h-[40vh] overflow-y-auto custom-scrollbar">
-                  {coreProtocols.map((protocol) => (
-                    <a
-                      key={protocol.id}
-                      href={`#protocol-${protocol.id}`}
-                      className="group flex items-center gap-2 text-sm font-bold text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-cyan-500 transition-colors uppercase tracking-widest cursor-pointer"
-                    >
-                      <span className="text-blue-500/50 dark:text-cyan-500/50 group-hover:text-blue-500 dark:group-hover:text-cyan-500 transition-colors">
-                        ▹
-                      </span>
-                      <span className="truncate">{protocol.name}</span>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-          <div className="bg-white dark:bg-black border border-gray-200 dark:border-gray-800 rounded-sm shadow-lg p-2 transition-all">
+        <div
+          className={`order-2 lg:col-span-4 flex-col gap-4 md:gap-8 ${mobileView !== "protocols" ? "flex" : "hidden lg:flex"}`}
+        >
+          <div
+            className={`bg-white dark:bg-black border border-gray-200 dark:border-gray-800 rounded-sm shadow-lg p-2 transition-all ${mobileView === "directives" ? "block" : "hidden lg:block"}`}
+          >
             <button
               onClick={() => setIsDirectivesOpen(!isDirectivesOpen)}
               className="w-full flex justify-between items-center p-4 md:p-5 cursor-pointer group"
@@ -807,7 +765,9 @@ export default function Dashboard() {
         </div>
 
         {/* CORE PROTOCOLS */}
-        <div className="order-1 lg:col-span-8 flex flex-col gap-6 md:gap-8">
+        <div
+          className={`order-1 lg:col-span-8 flex-col gap-6 md:gap-8 ${mobileView === "protocols" ? "flex" : "hidden lg:flex"}`}
+        >
           <div className="flex justify-between items-center border-b border-gray-200 dark:border-gray-800 pb-2">
             <h2 className="text-2xl italic font-bold text-gray-900 dark:text-white uppercase">
               Core Protocols
@@ -917,11 +877,169 @@ export default function Dashboard() {
           onCommence={handleAddOperation}
         />
       )}
+      {/* ========================================= */}
+      {/* MOBILE TACTICAL BOTTOM NAVIGATION (WITH CENTER FAB) */}
+      {/* ========================================= */}
+      <div className="lg:hidden fixed bottom-0 left-0 w-full bg-white/95 dark:bg-black/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 flex justify-between items-center z-40 px-8 h-16 shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+        {/* Left: Core Protocols Tab */}
+        <button
+          onClick={() => setMobileView("protocols")}
+          className={`flex flex-col items-center transition-colors w-16 ${mobileView === "protocols" ? "text-blue-500 dark:text-cyan-500" : "text-gray-400 dark:text-gray-600 hover:text-gray-900 dark:hover:text-gray-300"}`}
+        >
+          <svg
+            className="w-6 h-6 mb-1"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
+            />
+          </svg>
+          <span className="text-[10px] font-bold uppercase tracking-widest">
+            Core
+          </span>
+        </button>
 
+        {/* Center: Tactical Command Toggle */}
+        <div className="relative flex justify-center w-16">
+          {/* Mobile Pop-up Menu (Shoots up from the center) */}
+          {isCommandDockOpen && (
+            <div className="absolute bottom-16 flex flex-col items-center gap-3 animate-in slide-in-from-bottom-5 fade-in duration-200 min-w-[200px]">
+              <button
+                onClick={() => {
+                  setIsOperationModalOpen(true);
+                  setIsCommandDockOpen(false);
+                }}
+                className="w-full flex items-center justify-between px-4 py-3 bg-white dark:bg-black border border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300 transition-all rounded-sm shadow-xl uppercase tracking-widest text-xs font-bold active:bg-gray-100 dark:active:bg-gray-900"
+              >
+                <span>Operation</span>
+                <div className="bg-gray-100 dark:bg-gray-900 p-1.5 rounded-sm">
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M13 10V3L4 14h7v7l9-11h-7z"
+                    />
+                  </svg>
+                </div>
+              </button>
+              <button
+                onClick={() => {
+                  setIsProtocolModalOpen(true);
+                  setIsCommandDockOpen(false);
+                }}
+                className="w-full flex items-center justify-between px-4 py-3 bg-white dark:bg-black border border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300 transition-all rounded-sm shadow-xl uppercase tracking-widest text-xs font-bold active:bg-gray-100 dark:active:bg-gray-900"
+              >
+                <span>Protocol</span>
+                <div className="bg-gray-100 dark:bg-gray-900 p-1.5 rounded-sm">
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
+                    />
+                  </svg>
+                </div>
+              </button>
+              <button
+                onClick={() => {
+                  setIsDirectiveModalOpen(true);
+                  setIsCommandDockOpen(false);
+                }}
+                className="w-full flex items-center justify-between px-4 py-3 bg-white dark:bg-black border border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300 transition-all rounded-sm shadow-xl uppercase tracking-widest text-xs font-bold active:bg-gray-100 dark:active:bg-gray-900"
+              >
+                <span>Directive</span>
+                <div className="bg-gray-100 dark:bg-gray-900 p-1.5 rounded-sm">
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </div>
+              </button>
+            </div>
+          )}
+
+          {/* The Elevated '+' Button */}
+          <button
+            onClick={() => setIsCommandDockOpen(!isCommandDockOpen)}
+            className={`absolute -bottom-5 w-10 h-10 rounded-sm flex items-center justify-center transition-all duration-300 shadow-[0_10px_20px_rgba(0,0,0,0.5)] z-50
+              ${
+                isCommandDockOpen
+                  ? "bg-red-500 text-white rotate-45 shadow-[0_0_20px_rgba(239,68,68,0.5)]"
+                  : "bg-blue-500 dark:bg-cyan-500 text-white dark:text-black shadow-[0_0_20px_rgba(6,182,212,0.4)]"
+              }`}
+          >
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2.5"
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+          </button>
+        </div>
+
+        {/* Right: Temporary Directives Tab */}
+        <button
+          onClick={() => setMobileView("directives")}
+          className={`flex flex-col items-center transition-colors w-16 relative ${mobileView === "directives" ? "text-blue-500 dark:text-cyan-500" : "text-gray-400 dark:text-gray-600 hover:text-gray-900 dark:hover:text-gray-300"}`}
+        >
+          {simpleTasks.filter((t) => !t.completed).length > 0 && (
+            <span className="absolute top-0 right-2 w-2 h-2 bg-blue-500 dark:bg-cyan-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(6,182,212,0.8)]" />
+          )}
+          <svg
+            className="w-6 h-6 mb-1"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+            />
+          </svg>
+          <span className="text-[10px] font-bold uppercase tracking-widest">
+            Queue
+          </span>
+        </button>
+      </div>
       {/* ========================================= */}
       {/* TACTICAL COMMAND DOCK (FLOATING ACTION MENU) */}
       {/* ========================================= */}
-      <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-40 flex flex-col items-end gap-3">
+      <div className="hidden lg:flex fixed bottom-10 right-10 z-40 flex-col items-end gap-3">
         {/* Expanded Menu Options */}
         {isCommandDockOpen && (
           <div className="flex flex-col items-end gap-3 mb-2 animate-in slide-in-from-bottom-5 fade-in duration-200">
