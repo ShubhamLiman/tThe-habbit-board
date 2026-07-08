@@ -1,0 +1,112 @@
+// =====================================================================
+// The Habit Board — Entity Relationship Diagram (Eraser DSL)
+// Source: supabase/migrations/0001_new_schema.sql
+// Paste into a new diagram at https://app.eraser.io  (Diagram-as-code)
+// Model: Goal -> Habit -> Schedule -> Log
+// =====================================================================
+
+title The Habit Board — Data Model
+
+// --- Supabase-managed auth (external) --------------------------------
+auth_users [icon: user, color: gray] {
+  id uuid pk
+}
+
+// --- goals (macro objective; replaces active_operations) -------------
+goals [icon: target, color: blue] {
+  id uuid pk
+  user_id uuid
+  title text
+  description text
+  category text
+  status text
+  target_date date
+  target_streak int
+  ai_generated boolean
+  source_metadata jsonb
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+// --- habits (replaces core_protocols) --------------------------------
+habits [icon: repeat, color: green] {
+  id uuid pk
+  user_id uuid
+  goal_id uuid
+  name text
+  is_routine boolean
+  is_hard_mode boolean
+  target int
+  current_streak int
+  current_day_index int
+  longest_streak int
+  achievements jsonb
+  start_date date
+  status text
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+// --- habit_schedules (per-weekday variant definition) ----------------
+habit_schedules [icon: calendar, color: orange] {
+  id uuid pk
+  user_id uuid
+  habit_id uuid
+  day_of_week smallint
+  variant_label text
+  is_rest_day boolean
+  sub_tasks jsonb
+  target_metric jsonb
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+// --- habit_logs (per-date execution; source of truth) ----------------
+habit_logs [icon: check-circle, color: purple] {
+  id uuid pk
+  user_id uuid
+  habit_id uuid
+  schedule_id uuid
+  log_date date
+  status text
+  completed_sub_tasks jsonb
+  executed_at timestamptz
+  created_at timestamptz
+}
+
+// --- user_stats (shield pool; id == auth.users.id) -------------------
+user_stats [icon: shield, color: red] {
+  id uuid pk
+  global_shields int
+}
+
+// --- temporary_directives (short-lived task queue) -------------------
+temporary_directives [icon: clock, color: yellow] {
+  id uuid pk
+  user_id uuid
+  name text
+  valid_until timestamptz
+  completed boolean
+  terminated_at timestamptz
+  created_at timestamptz
+}
+
+// =====================================================================
+// Relationships
+//   <  = one-to-many        -  = one-to-one
+// label documents the ON DELETE behaviour
+// =====================================================================
+
+// Ownership (every table scoped to a user via RLS)
+auth_users.id < goals.user_id
+auth_users.id < habits.user_id
+auth_users.id < habit_schedules.user_id
+auth_users.id < habit_logs.user_id
+auth_users.id < temporary_directives.user_id
+auth_users.id - user_stats.id                       // shared PK, cascade
+
+// Domain hierarchy
+goals.id < habits.goal_id                            // set null (standalone habits ok)
+habits.id < habit_schedules.habit_id                 // cascade
+habits.id < habit_logs.habit_id                      // cascade
+habit_schedules.id < habit_logs.schedule_id          // set null
