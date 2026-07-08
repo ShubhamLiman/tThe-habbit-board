@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"; // 1. Import the Router
-import { supabase } from "../../lib/supeabase.js";
+import { supabase } from "../../lib/supabase.js";
 import EscalatingHabitCard from "../components/Habbitcard";
 import { LiveDirectiveCard } from "../components/LiveDirectiveCard.js";
 import OperationModal from "../components/modals/OperationModal.js";

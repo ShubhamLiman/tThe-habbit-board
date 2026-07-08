@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation"; // Added useRouter
-import { supabase } from "../../lib/supeabase"; // Import the database bridge
+import { supabase } from "../../lib/supabase"; // Import the database bridge
 
 function AuthContent() {
   const searchParams = useSearchParams();
