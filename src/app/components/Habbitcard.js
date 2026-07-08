@@ -1,54 +1,48 @@
 "use client";
 
 import React, { useState } from "react";
+import { deriveDaysArray } from "@/lib/data/time";
 
 export default function EscalatingHabitCard({
-  protocolId,
+  habitId,
   name,
   createdAt,
   globalShields,
   setGlobalShields,
   isRoutine,
-  initialSubTasks,
-  initialTarget,
-  initialStreak,
-  initialDayIndex,
-  initialDaysArray,
-  initialAchievements,
-  onUpdateName,
-  onUpdateRoutine,
-  onUpdateProgress,
   isHardMode,
-  lastExecutionDate,
+  target: initialTarget,
+  streak: initialStreak,
+  dayIndex: initialDayIndex,
+  achievements: initialAchievements,
+  longestStreak: initialLongest,
+  todaySchedule,
+  isRestToday,
+  isExecutedToday: initialExecutedToday,
+  onUpdateName,
+  onUpdateSubTasks,
+  onExecute,
 }) {
   const [target, setTarget] = useState(initialTarget ?? 21);
-  const [days, setDays] = useState(
-    initialDaysArray ?? Array(21).fill("pending"),
-  );
   const [currentDayIndex, setCurrentDayIndex] = useState(initialDayIndex ?? 0);
   const [streak, setStreak] = useState(initialStreak ?? 0);
   const [achievements, setAchievements] = useState(initialAchievements ?? []);
+  const [executedToday, setExecutedToday] = useState(!!initialExecutedToday);
+
+  // Days matrix is derived from streak position (habit_logs is the source of truth).
+  const days = deriveDaysArray(target, currentDayIndex);
 
   // --- ROUTINE STATE ---
-  // This tracks the sub-tasks for the CURRENT day.
-  const [dailyTasks, setDailyTasks] = useState(initialSubTasks ?? []);
+  // The checklist comes from TODAY's schedule variant (dynamic day-of-week).
+  const [dailyTasks, setDailyTasks] = useState(todaySchedule?.sub_tasks ?? []);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(name);
   const [isEditingRoutine, setIsEditingRoutine] = useState(false);
   const [editedTasks, setEditedTasks] = useState([]);
-  const [localLastExecution, setLocalLastExecution] =
-    useState(lastExecutionDate);
 
-  // The Temporal Lock Logic
+  const variantLabel = todaySchedule?.variant_label;
+  const showVariant = variantLabel && variantLabel !== name;
 
-  // --- EXACT TIMELINE SYNC (Fixes Phantom Saves) ---
-  const getLocalDateString = () => {
-    const now = new Date();
-    const offset = now.getTimezoneOffset() * 60000;
-    return new Date(now.getTime() - offset).toISOString().split("T")[0];
-  };
-  const todayStr = getLocalDateString();
-  const isExecutedToday = localLastExecution === todayStr;
   const startEditingRoutine = () => {
     setEditedTasks([...dailyTasks]);
     setIsEditingRoutine(true);
@@ -56,7 +50,7 @@ export default function EscalatingHabitCard({
 
   const handleSaveName = () => {
     if (editedName.trim() && editedName !== name) {
-      onUpdateName(protocolId, editedName);
+      onUpdateName(habitId, editedName);
     } else {
       setEditedName(name); // Reset if they left it blank
     }
@@ -68,7 +62,7 @@ export default function EscalatingHabitCard({
     const cleanedTasks = editedTasks.filter((t) => t.name.trim() !== "");
 
     setDailyTasks(cleanedTasks); // Update the visual UI immediately
-    onUpdateRoutine(protocolId, cleanedTasks); // Send to Dashboard -> Supabase
+    onUpdateSubTasks(habitId, cleanedTasks); // Send to Dashboard -> Supabase
     setIsEditingRoutine(false);
   };
 
@@ -109,70 +103,59 @@ export default function EscalatingHabitCard({
   };
 
   const handleExecute = () => {
-    if (isExecutionLocked || isExecutedToday) return;
+    if (isExecutionLocked || executedToday || isRestToday) return;
 
     const newStreak = streak + 1;
-    setStreak(newStreak);
+    const newDayIndex = currentDayIndex + 1;
+    const earnedShield = newStreak % 6 === 0;
 
-    if (newStreak % 6 === 0) {
-      setGlobalShields((prev) => prev + 1);
+    // Expansion / escalation logic (21 -> 50 -> 100)
+    let newTarget = target;
+    let newAchievements = achievements;
+    if (newStreak === 21 && target === 21) {
+      newTarget = 50;
+      if (!achievements.includes("Foundation_Forged"))
+        newAchievements = [...achievements, "Foundation_Forged"];
+    } else if (newStreak === 50 && target === 50) {
+      newTarget = 100;
+      if (!achievements.includes("Deep_Wiring_Complete"))
+        newAchievements = [...achievements, "Deep_Wiring_Complete"];
     }
 
-    const newDays = [...days];
-    newDays[currentDayIndex] = "completed";
-    setDays(newDays);
-    setCurrentDayIndex((prev) => prev + 1);
+    // --- LOCAL STATE (instant feedback) ---
+    setStreak(newStreak);
+    setCurrentDayIndex(newDayIndex);
+    setTarget(newTarget);
+    setAchievements(newAchievements);
+    setExecutedToday(true);
+    if (earnedShield) setGlobalShields((prev) => prev + 1);
 
-    // --- RESET ROUTINE FOR TOMORROW ---
+    // Snapshot which sub-tasks were completed today (for the log), then reset the checklist.
+    const completedSubTasks = isRoutine
+      ? dailyTasks.map((t) => ({ id: t.id, name: t.name }))
+      : [];
     if (isRoutine) {
       setDailyTasks((tasks) =>
         tasks.map((t) => ({ ...t, completedToday: false })),
       );
     }
 
-    // Expansion Logic
-    if (newStreak === 21 && target === 21) {
-      setTarget(50);
-      if (!achievements.includes("Foundation_Forged"))
-        setAchievements((prev) => [...prev, "Foundation_Forged"]);
-      setDays((prevDays) => [...prevDays, ...Array(29).fill("pending")]);
-    }
-
-    if (newStreak === 50 && target === 50) {
-      setTarget(100);
-      if (!achievements.includes("Deep_Wiring_Complete"))
-        setAchievements((prev) => [...prev, "Deep_Wiring_Complete"]);
-      setDays((prevDays) => [...prevDays, ...Array(50).fill("pending")]);
-    }
-
-    // Compute the final days array for the DB (include expansion padding if milestone reached)
-    const expansionAt21 = newStreak === 21 && target === 21;
-    const expansionAt50 = newStreak === 50 && target === 50;
-    const finalDaysArray = expansionAt21
-      ? [...newDays, ...Array(29).fill("pending")]
-      : expansionAt50
-        ? [...newDays, ...Array(50).fill("pending")]
-        : newDays;
-    setLocalLastExecution(getLocalDateString());
-    onUpdateProgress(
-      protocolId,
-      {
-        streak: newStreak,
-        current_day_index: currentDayIndex + 1,
-        days_array: finalDaysArray,
-        target: expansionAt21 ? 50 : expansionAt50 ? 100 : target,
-        achievements: expansionAt21
-          ? [...achievements, "Foundation_Forged"]
-          : expansionAt50
-            ? [...achievements, "Deep_Wiring_Complete"]
-            : achievements,
-        last_execution_date: getLocalDateString(), // <-- PHANTOM SAVE FIX INJECTED HERE
+    // --- PERSIST via Dashboard (writes habit_logs + updates streak cache + shields) ---
+    onExecute(habitId, {
+      patch: {
+        current_streak: newStreak,
+        current_day_index: newDayIndex,
+        longest_streak: Math.max(newStreak, initialLongest ?? 0),
+        achievements: newAchievements,
+        target: newTarget,
       },
-      newStreak % 6 === 0 ? globalShields + 1 : undefined,
-    );
+      log: {
+        scheduleId: todaySchedule?.id ?? null,
+        completedSubTasks,
+      },
+      newShieldCount: earnedShield ? globalShields + 1 : undefined,
+    });
   };
-
-  // NOTE: handleFail has been intentionally purged from the system.
 
   const phaseName =
     target === 21
@@ -183,7 +166,7 @@ export default function EscalatingHabitCard({
 
   return (
     <div className="w-full max-w-4xl bg-white dark:bg-black border border-gray-200 dark:border-gray-800 rounded-sm p-6 md:p-8 shadow-2xl font-oswald relative overflow-hidden transition-all duration-500">
-      {/* Header (Same as before) */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 border-b border-gray-100 dark:border-gray-900 pb-4 relative z-10">
         <div>
           <div className="flex flex-wrap items-center gap-2 mb-1">
@@ -290,11 +273,24 @@ export default function EscalatingHabitCard({
                 </button>
               </h2>
             )}
-            {isHardMode && (
-              <span className="px-2 py-0.5 border border-red-500/50 bg-red-500/10 text-red-500 text-[10px] font-bold uppercase tracking-widest rounded-sm animate-pulse">
-                Zero-Tolerance
-              </span>
-            )}
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              {/* Dynamic day-of-week focus (e.g. "Upper Body", "Rest Day") */}
+              {showVariant && (
+                <span className="px-2 py-0.5 border border-blue-500/50 dark:border-cyan-500/50 bg-blue-500/10 dark:bg-cyan-500/10 text-blue-500 dark:text-cyan-500 text-[10px] font-bold uppercase tracking-widest rounded-sm">
+                  Today: {variantLabel}
+                </span>
+              )}
+              {isHardMode && (
+                <span className="px-2 py-0.5 border border-red-500/50 bg-red-500/10 text-red-500 text-[10px] font-bold uppercase tracking-widest rounded-sm animate-pulse">
+                  Zero-Tolerance
+                </span>
+              )}
+              {isRestToday && (
+                <span className="px-2 py-0.5 border border-yellow-500/50 bg-yellow-500/10 text-yellow-500 text-[10px] font-bold uppercase tracking-widest rounded-sm">
+                  Rest Day
+                </span>
+              )}
+            </div>
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 tracking-widest uppercase mt-1">
             INIT_DATE:{" "}
@@ -316,7 +312,7 @@ export default function EscalatingHabitCard({
         </div>
       </div>
 
-      {/* The 21-Day Matrix (Same as before) */}
+      {/* The Day Matrix */}
       <div className="mb-6">
         <div
           className={`grid gap-2 md:gap-3 ${target === 21 ? "grid-cols-7" : "grid-cols-10"}`}
@@ -365,7 +361,7 @@ export default function EscalatingHabitCard({
       </div>
 
       {/* --- ROUTINE CHECKLIST UI --- */}
-      {isRoutine && (
+      {isRoutine && !isRestToday && (
         <div className="mb-6 bg-gray-50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-800 p-4 rounded-sm transition-all">
           <div className="flex justify-between items-center mb-3 border-b border-gray-200 dark:border-gray-800 pb-2">
             <h3 className="text-sm italic font-bold text-gray-900 dark:text-white uppercase tracking-widest">
@@ -506,21 +502,25 @@ export default function EscalatingHabitCard({
         </div>
       )}
 
-      {/* Simulator Controls */}
+      {/* Execute Controls */}
       <div className="flex flex-col md:flex-row gap-3 md:gap-4 border-t border-gray-100 dark:border-gray-900 pt-6 mt-4 relative z-10">
         {/* Primary Action: Execute */}
         <button
           onClick={handleExecute}
-          disabled={isExecutionLocked || isExecutedToday}
+          disabled={isExecutionLocked || executedToday || isRestToday}
           className={`w-full mt-6 py-4 font-bold italic uppercase tracking-widest rounded-sm transition-all duration-300 flex items-center justify-center gap-2 ${
-            isExecutedToday
-              ? "bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700" // LOCKED STATE
-              : isExecutionLocked
-                ? "bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed" // ROUTINE NOT FINISHED
-                : "bg-blue-500 dark:bg-cyan-500 text-white dark:text-black hover:bg-blue-600 dark:hover:bg-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.3)] hover:shadow-[0_0_25px_rgba(6,182,212,0.6)] cursor-pointer" // READY TO FIRE
+            isRestToday
+              ? "bg-yellow-500/10 text-yellow-500 cursor-not-allowed border border-yellow-500/30" // REST DAY
+              : executedToday
+                ? "bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700" // LOCKED STATE
+                : isExecutionLocked
+                  ? "bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed" // ROUTINE NOT FINISHED
+                  : "bg-blue-500 dark:bg-cyan-500 text-white dark:text-black hover:bg-blue-600 dark:hover:bg-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.3)] hover:shadow-[0_0_25px_rgba(6,182,212,0.6)] cursor-pointer" // READY TO FIRE
           }`}
         >
-          {isExecutedToday ? (
+          {isRestToday ? (
+            "Rest Day — Recover"
+          ) : executedToday ? (
             <>
               <svg
                 className="w-5 h-5"
@@ -537,12 +537,8 @@ export default function EscalatingHabitCard({
               </svg>
               Protocol Secured
             </>
-          ) : isRoutine ? (
-            isExecutionLocked ? (
-              "Complete Routine to Unlock"
-            ) : (
-              "Execute Protocol"
-            )
+          ) : isRoutine && isExecutionLocked ? (
+            "Complete Routine to Unlock"
           ) : (
             "Execute Protocol"
           )}

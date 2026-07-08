@@ -59,9 +59,9 @@ export default function ProfilePage() {
         setOperativeName(user.email.split("@")[0]);
       }
 
-      // Fetch active protocols
+      // Fetch active habits
       const { data: protocols } = await supabase
-        .from("core_protocols")
+        .from("habits")
         .select("*")
         .order("created_at", { ascending: true });
 
@@ -126,23 +126,20 @@ export default function ProfilePage() {
 
       if (authError) throw new Error("ACCESS DENIED: Incorrect Passcode.");
 
-      // 2. Purge Database
+      // 2. Purge Database (schedules + logs cascade via FK)
       const { error: deleteError } = await supabase
-        .from("core_protocols")
+        .from("habits")
         .delete()
         .eq("id", selectedProtocol.id);
 
       if (deleteError) throw deleteError;
 
       // 3. Update UI
-      // 3. Update UI
       const updatedProtocols = coreProtocols.filter(
         (p) => p.id !== selectedProtocol.id,
       );
       setCoreProtocols(updatedProtocols);
 
-      // Update the local cache so the Dashboard knows it was deleted
-      sessionStorage.setItem("coreProtocols", JSON.stringify(updatedProtocols));
       // 4. Close Modal
       setIsDeleteModalOpen(false);
       setSelectedProtocol(null);
@@ -394,7 +391,7 @@ export default function ProfilePage() {
                         </span>
                         <div className="flex gap-4">
                           <span className="text-xs text-blue-500 dark:text-cyan-500 font-bold uppercase tracking-widest">
-                            Streak: {protocol.streak} / {protocol.target}
+                            Streak: {protocol.current_streak} / {protocol.target}
                           </span>
                           <span className="text-xs text-gray-500 uppercase tracking-widest">
                             {protocol.is_routine ? "Routine" : "Habit"}
@@ -452,7 +449,7 @@ export default function ProfilePage() {
               . This action is permanent. Surrendering this protocol will
               instantly incinerate your{" "}
               <span className="text-red-500 font-bold">
-                {selectedProtocol.streak}-day streak
+                {selectedProtocol.current_streak}-day streak
               </span>{" "}
               and all associated discipline logs.
             </p>

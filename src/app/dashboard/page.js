@@ -1,16 +1,32 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation"; // 1. Import the Router
-import { supabase } from "../../lib/supabase.js";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 import EscalatingHabitCard from "../components/Habbitcard";
 import { LiveDirectiveCard } from "../components/LiveDirectiveCard.js";
 import OperationModal from "../components/modals/OperationModal.js";
 import DirectiveModal from "../components/modals/DirectiveModals.js";
 import ProtocolModal from "../components/modals/ProtocolModal.js";
 
+import {
+  getHabitsBundle,
+  createHabit,
+  updateHabit,
+  updateHabitSubTasks,
+  logHabitExecution,
+  insertAuditLogs,
+  deriveDaysArray,
+} from "@/lib/data/habits";
+import { getGoals, createGoal } from "@/lib/data/goals";
+import { getGlobalShields, setGlobalShields as saveGlobalShields } from "@/lib/data/stats";
+import { runAudit } from "@/lib/data/audit";
+import { getLocalDateString, getDayOfWeek } from "@/lib/data/time";
+
 export default function Dashboard() {
   const router = useRouter();
+
+  const [userId, setUserId] = useState(null);
 
   // --- TACTICAL COMMAND DOCK STATE ---
   const [isCommandDockOpen, setIsCommandDockOpen] = useState(false);
@@ -20,210 +36,110 @@ export default function Dashboard() {
   const [isDirectivesOpen, setIsDirectivesOpen] = useState(true);
 
   // --- ARRAYS FOR OUR DATA ---
-  const [simpleTasks, setSimpleTasks] = useState([]);
-  const [coreProtocols, setCoreProtocols] = useState([]);
+  const [simpleTasks, setSimpleTasks] = useState([]); // temporary_directives
+  const [habits, setHabits] = useState([]); // habits + schedules + logs bundle
+  const [goals, setGoals] = useState([]); // macro-objectives
 
   // --- MODAL STATE MANAGEMENT ---
   const [isProtocolModalOpen, setIsProtocolModalOpen] = useState(false);
   const [isDirectiveModalOpen, setIsDirectiveModalOpen] = useState(false);
-
-  // --- ACTIVE OPERATIONS STATE ---
-  const [activeOperations, setActiveOperations] = useState([]);
   const [isOperationModalOpen, setIsOperationModalOpen] = useState(false);
 
   // --- MOBILE VIEW CONTROLLER ---
-  // Controls which tab is active on smartphones (protocols, directives, or index)
   const [mobileView, setMobileView] = useState("protocols");
-
-  // --- TEMPORAL AUDIT: MIDNIGHT RESET LOGIC ---
-  const getLocalDateString = () => {
-    const now = new Date();
-    const offset = now.getTimezoneOffset() * 60000;
-    return new Date(now.getTime() - offset).toISOString().split("T")[0];
-  };
-
-  const calculateMissedDays = (lastExecutionDateStr, startDateStr) => {
-    const todayStr = getLocalDateString();
-
-    if (!startDateStr || todayStr < startDateStr) return 0;
-
-    const baseline = lastExecutionDateStr
-      ? new Date(lastExecutionDateStr)
-      : new Date(startDateStr);
-    const today = new Date(todayStr);
-
-    const diffTime = Math.abs(today - baseline);
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-    return diffDays > 1 ? diffDays - 1 : 0;
-  };
 
   useEffect(() => {
     const bootSequence = async () => {
-      // 1. Ask Supabase for the current active session
+      // 1. Verify the active session
       const {
         data: { user },
         error: authError,
       } = await supabase.auth.getUser();
 
-      // 2. Security Check: If no user is found, kick them out
       if (authError || !user) {
         console.warn("No active session detected. Terminating access.");
         router.push("/");
         return;
       }
 
-      // 3. Set the Operative Name
-      if (user.user_metadata && user.user_metadata.operative_name) {
-        setOperativeName(user.user_metadata.operative_name);
-      } else {
-        setOperativeName(user.email.split("@")[0]);
-      }
+      setUserId(user.id);
+      setOperativeName(
+        user.user_metadata?.operative_name ?? user.email.split("@")[0],
+      );
 
-      // 4. NEW: FETCH TEMPORARY DIRECTIVES
-      // --- THE MASTER DATA FETCH (WITH TACTICAL CACHING) ---
       try {
-        // 1. INSTANT LOAD: Check local memory first to bypass loading screens
-        const cachedProtocols = sessionStorage.getItem("coreProtocols");
+        // 2. INSTANT LOAD: hydrate directives from local cache
         const cachedDirectives = sessionStorage.getItem("temporaryDirectives");
-
-        if (cachedProtocols) setCoreProtocols(JSON.parse(cachedProtocols));
         if (cachedDirectives) setSimpleTasks(JSON.parse(cachedDirectives));
 
-        // 2. BACKGROUND SYNC: Silently fetch fresh data from Supabase
-
-        // A. Fetch Temporary Directives
+        // 3. Temporary Directives (user-scoped; RLS also enforces this server-side)
         const { data: directives, error: dirError } = await supabase
           .from("temporary_directives")
           .select("*")
+          .eq("user_id", user.id)
           .order("created_at", { ascending: true });
-
         if (dirError) throw dirError;
         if (directives) {
           setSimpleTasks(directives);
           sessionStorage.setItem(
             "temporaryDirectives",
             JSON.stringify(directives),
-          ); // Update Cache
-        }
-
-        // A.5 Fetch Active Operations
-        const { data: operations, error: opError } = await supabase
-          .from("active_operations")
-          .select("*")
-          .eq("user_id", user.id) // Only get this user's operations
-          .order("created_at", { ascending: true });
-
-        if (opError) throw opError;
-        if (operations) {
-          setActiveOperations(operations);
-        }
-
-        // B. Fetch Core Protocols
-        // B. Fetch Global Shields FIRST (The audit needs this data)
-        let currentShields = 0;
-        const { data: stats, error: statsError } = await supabase
-          .from("user_stats")
-          .select("global_shields")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        if (statsError) throw statsError;
-        if (stats && stats.global_shields !== undefined) {
-          currentShields = stats.global_shields;
-          setGlobalShields(currentShields);
-        }
-
-        // C. Fetch Core Protocols & RUN MIDNIGHT AUDIT
-        const { data: protocols, error: protError } = await supabase
-          .from("core_protocols")
-          .select("*")
-          .order("created_at", { ascending: true });
-
-        if (protError) throw protError;
-
-        if (protocols) {
-          let auditTriggered = false;
-          let updatedShields = currentShields;
-
-          // Process each protocol to check for missed days
-          // Process each protocol to check for missed days
-          const auditedProtocols = protocols.map((protocol) => {
-            const missedDays = calculateMissedDays(
-              protocol.last_execution_date,
-              protocol.start_date,
-            );
-
-            if (missedDays > 0) {
-              auditTriggered = true;
-
-              let newStreak = protocol.streak;
-              let newCurrentDayIndex = protocol.current_day_index;
-              let newDaysArray = [...(protocol.days_array || [])];
-
-              // --- NEW: HARD MODE AUDIT ---
-              if (protocol.is_hard_mode) {
-                // HARD MODE: Instant death. No shield calculations.
-                newStreak = 0;
-                newCurrentDayIndex = 0;
-                newDaysArray = Array(protocol.target).fill("pending");
-              } else {
-                // STANDARD MODE: Calculate shield damage
-                let remainingShields = updatedShields - missedDays;
-                if (remainingShields < 0) {
-                  // Shields breached. Break the streak.
-                  newStreak = 0;
-                  newCurrentDayIndex = 0;
-                  newDaysArray = Array(protocol.target).fill("pending");
-                  updatedShields = 0;
-                } else {
-                  // Shields held. Absorb the damage.
-                  updatedShields = remainingShields;
-                }
-              }
-
-              return {
-                ...protocol,
-                streak: newStreak,
-                current_day_index: newCurrentDayIndex,
-                days_array: newDaysArray,
-                _needsDbSync: true,
-              };
-            }
-            return protocol;
-          });
-
-          // If the audit caught a failure, silently update Supabase in the background
-          if (auditTriggered) {
-            auditedProtocols.forEach(async (p) => {
-              if (p._needsDbSync) {
-                await supabase
-                  .from("core_protocols")
-                  .update({
-                    streak: p.streak,
-                    current_day_index: p.current_day_index,
-                    days_array: p.days_array,
-                  })
-                  .eq("id", p.id);
-              }
-            });
-
-            // Update Global Shields if they took damage
-            if (updatedShields !== currentShields) {
-              await supabase
-                .from("user_stats")
-                .update({ global_shields: updatedShields })
-                .eq("id", user.id);
-              setGlobalShields(updatedShields);
-            }
-          }
-
-          setCoreProtocols(auditedProtocols);
-          sessionStorage.setItem(
-            "coreProtocols",
-            JSON.stringify(auditedProtocols),
           );
         }
+
+        // 4. Goals (macro-objectives)
+        const goalsData = await getGoals();
+        setGoals(goalsData);
+
+        // 5. Global Shields (audit needs this first)
+        let currentShields = await getGlobalShields(user.id);
+
+        // 6. Habits bundle (habit + 7-day schedule + logs, with derived helpers)
+        let bundle = await getHabitsBundle();
+
+        // 7. MIDNIGHT AUDIT — rest-day aware, log-based, shares the shield pool
+        const todayStr = getLocalDateString();
+        const { perHabit, endingShields, changed } = runAudit(
+          bundle,
+          todayStr,
+          currentShields,
+        );
+
+        if (changed) {
+          for (const { habitId, patch, newLogs } of perHabit) {
+            if (newLogs.length) {
+              await insertAuditLogs(
+                newLogs.map((l) => ({ ...l, user_id: user.id })),
+              );
+            }
+            if (patch) await updateHabit(habitId, patch);
+          }
+
+          if (endingShields !== currentShields) {
+            await saveGlobalShields(user.id, endingShields);
+            currentShields = endingShields;
+          }
+
+          const patchMap = {};
+          perHabit.forEach((p) => {
+            if (p.patch) patchMap[p.habitId] = p.patch;
+          });
+          bundle = bundle.map((h) =>
+            patchMap[h.id]
+              ? {
+                  ...h,
+                  ...patchMap[h.id],
+                  daysArray: deriveDaysArray(
+                    h.target,
+                    patchMap[h.id].current_day_index,
+                  ),
+                }
+              : h,
+          );
+        }
+
+        setGlobalShields(currentShields);
+        setHabits(bundle);
       } catch (error) {
         console.error("Failed to sync profile from mainframe:", error.message);
       }
@@ -241,18 +157,15 @@ export default function Dashboard() {
     })
     .toUpperCase();
 
-  const handleAddProtocol = async (
+  // --- INITIALIZE HABIT (from ProtocolModal) ---
+  const handleAddHabit = async (
     name,
     isRoutineMode,
     routineSteps,
     isHardMode,
   ) => {
     try {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-      if (authError || !user) {
+      if (!userId) {
         alert(
           "Authentication lost. Re-establish connection to initialize protocols.",
         );
@@ -261,7 +174,7 @@ export default function Dashboard() {
 
       const cleanedSteps = routineSteps.filter((step) => step.trim() !== "");
       const isRoutine = isRoutineMode && cleanedSteps.length > 0;
-      const formattedSubTasks = isRoutine
+      const subTasks = isRoutine
         ? cleanedSteps.map((step, index) => ({
             id: index,
             name: step,
@@ -269,74 +182,54 @@ export default function Dashboard() {
           }))
         : [];
 
-      const initialDaysArray = Array(21).fill("pending");
+      const habit = await createHabit({
+        userId,
+        name,
+        isRoutine,
+        isHardMode,
+        subTasks,
+        target: 21,
+      });
 
-      const { data, error } = await supabase
-        .from("core_protocols")
-        .insert([
-          {
-            user_id: user.id,
-            name: name,
-            target: 21,
-            streak: 0,
-            current_day_index: 0,
-            days_array: initialDaysArray,
-            achievements: [],
-            is_routine: isRoutine,
-            sub_tasks: formattedSubTasks,
-            start_date: getLocalDateString(),
-            last_execution_date: null,
-            is_hard_mode: isHardMode,
-          },
-        ])
-        .select()
-        .single();
-      if (error) throw error;
+      const todayDow = getDayOfWeek(getLocalDateString());
+      const todaySchedule =
+        habit.schedules.find((s) => s.day_of_week === todayDow) ?? null;
 
-      setCoreProtocols([...coreProtocols, data]);
+      setHabits((prev) => [
+        ...prev,
+        {
+          ...habit,
+          logs: [],
+          todaySchedule,
+          isRestToday: !!todaySchedule?.is_rest_day,
+          isExecutedToday: false,
+          lastLogDate: null,
+          daysArray: deriveDaysArray(habit.target, 0),
+        },
+      ]);
       setIsProtocolModalOpen(false);
     } catch (error) {
-      console.error("Failed to initialize protocol:", error.message);
+      console.error("Failed to initialize habit:", error.message);
       alert("System Error: Could not commit protocol to database.");
     }
   };
-  // --- INITIALIZE OPERATION ---
-  // Notice we now pass parameters into this function
-  const handleAddOperation = async (opName, opTarget, selectedIds) => {
+
+  // --- INITIALIZE GOAL (from OperationModal) ---
+  const handleAddGoal = async (title, targetStreak, habitIds) => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      const { data: newOp, error: opError } = await supabase
-        .from("active_operations")
-        .insert([
-          { user_id: user.id, name: opName, target_days: Number(opTarget) },
-        ])
-        .select()
-        .single();
-
-      if (opError) throw opError;
-
-      const { error: attachError } = await supabase
-        .from("core_protocols")
-        .update({ operation_id: newOp.id })
-        .in("id", selectedIds);
-
-      if (attachError) throw attachError;
-
-      setActiveOperations([...activeOperations, newOp]);
-
-      const updatedProtocols = coreProtocols.map((p) =>
-        selectedIds.includes(p.id) ? { ...p, operation_id: newOp.id } : p,
+      const goal = await createGoal({ userId, title, targetStreak, habitIds });
+      setGoals((prev) => [...prev, goal]);
+      setHabits((prev) =>
+        prev.map((h) =>
+          habitIds.includes(h.id) ? { ...h, goal_id: goal.id } : h,
+        ),
       );
-      setCoreProtocols(updatedProtocols);
-      sessionStorage.setItem("coreProtocols", JSON.stringify(updatedProtocols));
     } catch (error) {
-      console.error("Failed to initialize Operation:", error.message);
+      console.error("Failed to initialize Goal:", error.message);
     }
   };
 
+  // --- ADD TEMPORARY DIRECTIVE ---
   const handleAddDirective = async (
     name,
     directiveDays,
@@ -356,11 +249,7 @@ export default function Dashboard() {
     const deadlineTimestamp = new Date(Date.now() + timeToAddMs).toISOString();
 
     try {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-      if (authError || !user) {
+      if (!userId) {
         alert("Authentication lost.");
         return;
       }
@@ -369,7 +258,7 @@ export default function Dashboard() {
         .from("temporary_directives")
         .insert([
           {
-            user_id: user.id,
+            user_id: userId,
             name: name,
             valid_until: deadlineTimestamp,
             completed: false,
@@ -388,92 +277,97 @@ export default function Dashboard() {
     }
   };
 
-  // --- SYNC PROTOCOL PROGRESS TO MAINFRAME ---
-  const handleUpdateProgress = async (
-    protocolId,
-    updatedProtocolData,
-    newShieldCount,
-  ) => {
+  // --- EXECUTE HABIT (from card): write a habit_logs row + update streak cache ---
+  const handleExecute = async (habitId, { patch, log, newShieldCount }) => {
     try {
-      // 1. Get the current user ID
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-      if (authError || !user) throw new Error("Auth missing.");
+      const { duplicate } = await logHabitExecution({
+        userId,
+        habitId,
+        scheduleId: log.scheduleId,
+        completedSubTasks: log.completedSubTasks,
+        status: "completed",
+      });
 
-      // 2. Update the Protocol in the database
-      const { error: protError } = await supabase
-        .from("core_protocols")
-        .update(updatedProtocolData)
-        .eq("id", protocolId);
+      if (duplicate) {
+        alert(
+          "Already executed today. The system enforces one execution per day.",
+        );
+        setHabits((prev) =>
+          prev.map((h) =>
+            h.id === habitId ? { ...h, isExecutedToday: true } : h,
+          ),
+        );
+        return;
+      }
 
-      if (protError) throw protError;
+      await updateHabit(habitId, patch);
 
-      // 3. Update the Global Shields in the database (if it changed)
-      if (newShieldCount !== undefined && newShieldCount !== globalShields) {
-        const { error: shieldError } = await supabase
-          .from("user_stats")
-          .update({ global_shields: newShieldCount })
-          .eq("id", user.id);
-
-        if (shieldError) throw shieldError;
+      if (newShieldCount !== undefined) {
+        await saveGlobalShields(userId, newShieldCount);
         setGlobalShields(newShieldCount);
       }
 
-      // 4. Update the Local React State & Cache
-      setCoreProtocols((protocols) => {
-        const updated = protocols.map((p) =>
-          p.id === protocolId ? { ...p, ...updatedProtocolData } : p,
-        );
-        sessionStorage.setItem("coreProtocols", JSON.stringify(updated));
-        return updated;
-      });
+      const todayStr = getLocalDateString();
+      setHabits((prev) =>
+        prev.map((h) =>
+          h.id === habitId
+            ? {
+                ...h,
+                ...patch,
+                isExecutedToday: true,
+                lastLogDate: todayStr,
+                daysArray: deriveDaysArray(
+                  patch.target,
+                  patch.current_day_index,
+                ),
+              }
+            : h,
+        ),
+      );
     } catch (error) {
-      console.error("Failed to sync progress:", error.message);
+      console.error("Failed to sync execution:", error.message);
       alert("Database sync failed. Your execution may not have saved.");
     }
   };
 
-  const handleUpdateProtocolName = async (protocolId, newName) => {
-    // 1. Validate
+  // --- RENAME HABIT ---
+  const handleUpdateName = async (habitId, newName) => {
     if (!newName || !newName.trim()) return;
 
-    // 2. Optimistic UI Update (Instant feedback)
-    setCoreProtocols((protocols) =>
-      protocols.map((p) => (p.id === protocolId ? { ...p, name: newName } : p)),
+    setHabits((prev) =>
+      prev.map((h) => (h.id === habitId ? { ...h, name: newName } : h)),
     );
 
-    // 3. Database Update
     try {
-      const { error } = await supabase
-        .from("core_protocols")
-        .update({ name: newName })
-        .eq("id", protocolId);
-
-      if (error) throw error;
+      await updateHabit(habitId, { name: newName });
     } catch (error) {
-      console.error("Failed to update protocol name:", error.message);
+      console.error("Failed to update habit name:", error.message);
       alert("Database sync failed. Your change may not have saved.");
     }
   };
-  // --- UPDATE ROUTINE TASKS ---
-  const handleUpdateRoutine = async (protocolId, newSubTasks) => {
-    // 1. Optimistic UI Update
-    setCoreProtocols((protocols) =>
-      protocols.map((p) =>
-        p.id === protocolId ? { ...p, sub_tasks: newSubTasks } : p,
-      ),
+
+  // --- UPDATE ROUTINE SUB-TASKS (uniform across the week for Phase 1) ---
+  const handleUpdateSubTasks = async (habitId, newSubTasks) => {
+    setHabits((prev) =>
+      prev.map((h) => {
+        if (h.id !== habitId) return h;
+        const schedules = h.schedules.map((s) => ({
+          ...s,
+          sub_tasks: newSubTasks,
+        }));
+        const todayDow = getDayOfWeek(getLocalDateString());
+        return {
+          ...h,
+          schedules,
+          todaySchedule:
+            schedules.find((s) => s.day_of_week === todayDow) ??
+            h.todaySchedule,
+        };
+      }),
     );
 
-    // 2. Database Update
     try {
-      const { error } = await supabase
-        .from("core_protocols")
-        .update({ sub_tasks: newSubTasks })
-        .eq("id", protocolId);
-
-      if (error) throw error;
+      await updateHabitSubTasks(habitId, newSubTasks);
     } catch (error) {
       console.error("Failed to update routine tasks:", error.message);
       alert("Database sync failed. Your changes may not have saved.");
@@ -481,15 +375,12 @@ export default function Dashboard() {
   };
 
   const toggleSimpleTask = async (taskId) => {
-    // 1. Find the target task
     const task = simpleTasks.find((t) => t.id === taskId);
     if (!task) return;
 
-    // 2. Calculate the new state
     const isNowCompleted = !task.completed;
     const timestamp = isNowCompleted ? new Date().toISOString() : null;
 
-    // 3. Optimistic UI Update (Instant feedback)
     setSimpleTasks((tasks) =>
       tasks.map((t) =>
         t.id === taskId
@@ -498,34 +389,24 @@ export default function Dashboard() {
       ),
     );
 
-    // 4. Update the Database
     try {
       const { error } = await supabase
         .from("temporary_directives")
-        .update({
-          completed: isNowCompleted,
-          terminated_at: timestamp,
-        })
+        .update({ completed: isNowCompleted, terminated_at: timestamp })
         .eq("id", taskId);
-
       if (error) throw error;
     } catch (error) {
       console.error("Database sync failed:", error.message);
     }
   };
 
-  // --- MANUAL OVERRIDE: DELETE DIRECTIVE ---
   const handleDeleteDirective = async (taskId) => {
-    // 1. Optimistic UI Update
     setSimpleTasks((tasks) => tasks.filter((t) => t.id !== taskId));
-
-    // 2. Database Deletion
     try {
       const { error } = await supabase
         .from("temporary_directives")
         .delete()
         .eq("id", taskId);
-
       if (error) throw error;
     } catch (error) {
       console.error("Failed to terminate directive:", error.message);
@@ -569,13 +450,13 @@ export default function Dashboard() {
               />
             </svg>
             <span
-              className={`text-xl md:text-2xl font-bold italic leading-none ${coreProtocols.length > 0 ? "text-gray-900 dark:text-white" : "text-gray-400 dark:text-gray-600"}`}
+              className={`text-xl md:text-2xl font-bold italic leading-none ${habits.length > 0 ? "text-gray-900 dark:text-white" : "text-gray-400 dark:text-gray-600"}`}
             >
-              {coreProtocols.length < 10 && coreProtocols.length > 0
-                ? `0${coreProtocols.length}`
-                : coreProtocols.length === 0
+              {habits.length < 10 && habits.length > 0
+                ? `0${habits.length}`
+                : habits.length === 0
                   ? "00"
-                  : coreProtocols.length}
+                  : habits.length}
             </span>
           </div>
 
@@ -630,26 +511,23 @@ export default function Dashboard() {
           </button>
         </div>
       </header>
-      {/* --- ACTIVE OPERATIONS HUD --- */}
-      {activeOperations.map((op) => {
-        // Calculate Operation Progress based on attached protocols
-        const attachedProtocols = coreProtocols.filter(
-          (p) => p.operation_id === op.id,
-        );
+
+      {/* --- ACTIVE OPERATIONS HUD (Goals) --- */}
+      {goals.map((goal) => {
+        const attachedHabits = habits.filter((h) => h.goal_id === goal.id);
         const avgStreak =
-          attachedProtocols.length > 0
-            ? attachedProtocols.reduce((sum, p) => sum + p.streak, 0) /
-              attachedProtocols.length
+          attachedHabits.length > 0
+            ? attachedHabits.reduce((sum, h) => sum + h.current_streak, 0) /
+              attachedHabits.length
             : 0;
-        const progressPercent = Math.min(
-          100,
-          (avgStreak / op.target_days) * 100,
-        );
+        const progressPercent = goal.target_streak
+          ? Math.min(100, (avgStreak / goal.target_streak) * 100)
+          : 0;
         const isComplete = progressPercent >= 100;
 
         return (
           <div
-            key={op.id}
+            key={goal.id}
             className="max-w-7xl mx-auto mb-4 md:mb-8 bg-gray-900 dark:bg-black border border-gray-800 rounded-sm p-4 md:p-6 relative overflow-hidden"
           >
             {/* Background glowing effect */}
@@ -664,17 +542,17 @@ export default function Dashboard() {
                   {isComplete ? "Operation Successful" : "Active Operation"}
                 </span>
                 <h2 className="text-xl md:text-3xl italic font-bold text-white uppercase tracking-tight truncate">
-                  {op.name}
+                  {goal.title}
                 </h2>
                 <p className="text-[10px] md:text-sm text-gray-400 uppercase tracking-widest mt-0.5 truncate">
-                  TGT: {op.target_days}D | LOAD: {attachedProtocols.length}
+                  TGT: {goal.target_streak}D | LOAD: {attachedHabits.length}
                 </p>
               </div>
               <div className="text-right shrink-0">
                 <span className="text-2xl md:text-4xl italic font-bold text-white leading-none">
                   {avgStreak.toFixed(1)}{" "}
                   <span className="text-gray-600 text-sm md:text-2xl">
-                    / {op.target_days}
+                    / {goal.target_streak}
                   </span>
                 </span>
               </div>
@@ -690,6 +568,7 @@ export default function Dashboard() {
           </div>
         );
       })}
+
       {/* --- MAIN GRID LAYOUT --- */}
       <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
         <div
@@ -774,7 +653,7 @@ export default function Dashboard() {
             </h2>
           </div>
 
-          {coreProtocols.length === 0 ? (
+          {habits.length === 0 ? (
             <div className="w-full flex flex-col items-center justify-center py-24 px-6 text-center border-2 border-dashed border-gray-300 dark:border-gray-800 rounded-sm bg-white/50 dark:bg-black/30">
               <div className="w-20 h-20 mb-6 rounded-full bg-blue-50 dark:bg-cyan-900/20 flex items-center justify-center">
                 <svg
@@ -808,17 +687,16 @@ export default function Dashboard() {
               </button>
             </div>
           ) : (
-            // MAP THROUGH THE ARRAYS AND RENDER CARDS
-            coreProtocols.map((protocol) => (
+            habits.map((habit) => (
               <div
-                key={protocol.id}
-                id={`protocol-${protocol.id}`}
+                key={habit.id}
+                id={`protocol-${habit.id}`}
                 className="scroll-mt-12"
               >
                 <EscalatingHabitCard
-                  protocolId={protocol.id}
-                  name={protocol.name}
-                  createdAt={new Date(protocol.created_at)
+                  habitId={habit.id}
+                  name={habit.name}
+                  createdAt={new Date(habit.created_at)
                     .toLocaleDateString("en-GB", {
                       day: "2-digit",
                       month: "short",
@@ -827,18 +705,19 @@ export default function Dashboard() {
                     .toUpperCase()}
                   globalShields={globalShields}
                   setGlobalShields={setGlobalShields}
-                  isRoutine={protocol.is_routine}
-                  initialSubTasks={protocol.sub_tasks}
-                  initialTarget={protocol.target}
-                  initialStreak={protocol.streak}
-                  initialDayIndex={protocol.current_day_index}
-                  initialDaysArray={protocol.days_array}
-                  initialAchievements={protocol.achievements}
-                  onUpdateRoutine={handleUpdateRoutine}
-                  onUpdateName={handleUpdateProtocolName}
-                  onUpdateProgress={handleUpdateProgress}
-                  isHardMode={protocol.is_hard_mode}
-                  lastExecutionDate={protocol.last_execution_date}
+                  isRoutine={habit.is_routine}
+                  isHardMode={habit.is_hard_mode}
+                  target={habit.target}
+                  streak={habit.current_streak}
+                  dayIndex={habit.current_day_index}
+                  achievements={habit.achievements}
+                  longestStreak={habit.longest_streak}
+                  todaySchedule={habit.todaySchedule}
+                  isRestToday={habit.isRestToday}
+                  isExecutedToday={habit.isExecutedToday}
+                  onUpdateName={handleUpdateName}
+                  onUpdateSubTasks={handleUpdateSubTasks}
+                  onExecute={handleExecute}
                 />
               </div>
             ))
@@ -850,12 +729,12 @@ export default function Dashboard() {
       {/* MODALS OVERLAYS */}
       {/* ========================================= */}
 
-      {/* 1. Add Protocol Modal */}
+      {/* 1. Add Protocol (Habit) Modal */}
       {isProtocolModalOpen && (
         <ProtocolModal
           isOpen={isProtocolModalOpen}
           onClose={() => setIsProtocolModalOpen(false)}
-          onCommence={handleAddProtocol}
+          onCommence={handleAddHabit}
         />
       )}
 
@@ -868,15 +747,16 @@ export default function Dashboard() {
         />
       )}
 
-      {/* 3. Add Operation Modal */}
+      {/* 3. Add Operation (Goal) Modal */}
       {isOperationModalOpen && (
         <OperationModal
           isOpen={isOperationModalOpen}
           onClose={() => setIsOperationModalOpen(false)}
-          availableProtocols={coreProtocols.filter((p) => !p.operation_id)}
-          onCommence={handleAddOperation}
+          availableProtocols={habits.filter((h) => !h.goal_id)}
+          onCommence={handleAddGoal}
         />
       )}
+
       {/* ========================================= */}
       {/* MOBILE TACTICAL BOTTOM NAVIGATION (WITH CENTER FAB) */}
       {/* ========================================= */}
@@ -1036,6 +916,7 @@ export default function Dashboard() {
           </span>
         </button>
       </div>
+
       {/* ========================================= */}
       {/* TACTICAL COMMAND DOCK (FLOATING ACTION MENU) */}
       {/* ========================================= */}
