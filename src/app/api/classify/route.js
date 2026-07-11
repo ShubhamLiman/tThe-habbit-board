@@ -1,5 +1,6 @@
 import { getUserFromRequest } from "@/lib/server/auth";
 import { classifyGoal } from "@/lib/ai/classify";
+import { aiErrorResponse } from "@/lib/server/ai-response";
 
 // Runs on the Node.js runtime (not Edge): our server-only modules use the Gemini
 // SDK and the service-role Supabase client, both of which need Node.
@@ -30,6 +31,6 @@ export async function POST(req) {
     return Response.json(result);
   } catch (err) {
     console.error("[/api/classify] classification failed:", err);
-    return Response.json({ error: "Classification failed" }, { status: 502 });
+    return aiErrorResponse(err, "Classification failed");
   }
 }

@@ -678,13 +678,21 @@ export default function Dashboard() {
                 No active protocols detected. Initialize your first keystone
                 habit to begin the 21-day neural rewrite.
               </p>
-              {/* OPEN PROTOCOL MODAL BUTTON (ZERO STATE) */}
-              <button
-                onClick={() => setIsProtocolModalOpen(true)}
-                className="px-8 py-4 bg-blue-500 dark:bg-cyan-500 text-white dark:text-black font-bold italic uppercase tracking-wide hover:bg-blue-600 dark:hover:bg-cyan-400 transition-all shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:scale-105 rounded-sm cursor-pointer"
-              >
-                + Initialize Protocol
-              </button>
+              {/* ZERO-STATE ACTIONS: AI Coach (primary) + manual protocol */}
+              <div className="flex flex-col sm:flex-row gap-3 items-center">
+                <button
+                  onClick={() => router.push("/coach")}
+                  className="px-8 py-4 bg-blue-500 dark:bg-cyan-500 text-white dark:text-black font-bold italic uppercase tracking-wide hover:bg-blue-600 dark:hover:bg-cyan-400 transition-all shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:scale-105 rounded-sm cursor-pointer"
+                >
+                  ✦ Build with AI Coach
+                </button>
+                <button
+                  onClick={() => setIsProtocolModalOpen(true)}
+                  className="px-8 py-4 bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-300 font-bold italic uppercase tracking-wide border border-gray-300 dark:border-gray-700 hover:border-blue-500 dark:hover:border-cyan-500 transition-all rounded-sm cursor-pointer"
+                >
+                  + Manual Protocol
+                </button>
+              </div>
             </div>
           ) : (
             habits.map((habit) => (
@@ -924,6 +932,20 @@ export default function Dashboard() {
         {/* Expanded Menu Options */}
         {isCommandDockOpen && (
           <div className="flex flex-col items-end gap-3 mb-2 animate-in slide-in-from-bottom-5 fade-in duration-200">
+            <button
+              onClick={() => {
+                router.push("/coach");
+                setIsCommandDockOpen(false);
+              }}
+              className="flex items-center gap-3 px-4 py-3 bg-blue-500 dark:bg-cyan-500 text-white dark:text-black border border-blue-500 dark:border-cyan-500 hover:bg-blue-600 dark:hover:bg-cyan-400 transition-all rounded-sm shadow-xl uppercase tracking-widest text-xs font-bold group cursor-pointer"
+            >
+              <span>AI Coach</span>
+              <div className="bg-white/20 p-1.5 rounded-sm">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                </svg>
+              </div>
+            </button>
             <button
               onClick={() => {
                 setIsOperationModalOpen(true);

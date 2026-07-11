@@ -1,6 +1,7 @@
 import { getUserFromRequest } from "@/lib/server/auth";
 import { classifyGoal, isValidClassification } from "@/lib/ai/classify";
 import { generateInterview } from "@/lib/ai/interview";
+import { aiErrorResponse } from "@/lib/server/ai-response";
 
 // Node.js runtime: uses the Gemini SDK + service-role Supabase client (see /classify).
 export const runtime = "nodejs";
@@ -37,6 +38,6 @@ export async function POST(req) {
     return Response.json({ classification, questions });
   } catch (err) {
     console.error("[/api/interview] interview generation failed:", err);
-    return Response.json({ error: "Interview generation failed" }, { status: 502 });
+    return aiErrorResponse(err, "Interview generation failed");
   }
 }
