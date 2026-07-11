@@ -172,7 +172,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 font-oswald p-4 md:p-8 relative overflow-hidden">
       {/* Background Grid */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none"></div>
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-size-[24px_24px] pointer-events-none"></div>
 
       <div className="max-w-8xl mx-auto relative z-10">
         {/* Navigation */}
@@ -391,7 +391,8 @@ export default function ProfilePage() {
                         </span>
                         <div className="flex gap-4">
                           <span className="text-xs text-blue-500 dark:text-cyan-500 font-bold uppercase tracking-widest">
-                            Streak: {protocol.current_streak} / {protocol.target}
+                            Streak: {protocol.current_streak} /{" "}
+                            {protocol.target}
                           </span>
                           <span className="text-xs text-gray-500 uppercase tracking-widest">
                             {protocol.is_routine ? "Routine" : "Habit"}
@@ -420,7 +421,7 @@ export default function ProfilePage() {
 
       {/* --- PROTOCOL ABORT MODAL (HOSTILE UI) --- */}
       {isDeleteModalOpen && selectedProtocol && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 transition-opacity">
+        <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 transition-opacity">
           <div className="w-full max-w-lg bg-black border-2 border-red-500/50 rounded-sm shadow-[0_0_50px_rgba(239,68,68,0.2)] p-8 relative">
             <div className="flex items-center gap-3 mb-6 text-red-500">
               <svg

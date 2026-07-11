@@ -19,7 +19,10 @@ import {
   deriveDaysArray,
 } from "@/lib/data/habits";
 import { getGoals, createGoal } from "@/lib/data/goals";
-import { getGlobalShields, setGlobalShields as saveGlobalShields } from "@/lib/data/stats";
+import {
+  getGlobalShields,
+  setGlobalShields as saveGlobalShields,
+} from "@/lib/data/stats";
 import { runAudit } from "@/lib/data/audit";
 import { getLocalDateString, getDayOfWeek } from "@/lib/data/time";
 
@@ -796,7 +799,7 @@ export default function Dashboard() {
         <div className="relative flex justify-center w-16">
           {/* Mobile Pop-up Menu (Shoots up from the center) */}
           {isCommandDockOpen && (
-            <div className="absolute bottom-16 flex flex-col items-center gap-3 animate-in slide-in-from-bottom-5 fade-in duration-200 min-w-[200px]">
+            <div className="absolute bottom-16 flex flex-col items-center gap-3 animate-in slide-in-from-bottom-5 fade-in duration-200 min-w-50">
               <button
                 onClick={() => {
                   setIsOperationModalOpen(true);
@@ -941,8 +944,18 @@ export default function Dashboard() {
             >
               <span>AI Coach</span>
               <div className="bg-white/20 p-1.5 rounded-sm">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
+                  />
                 </svg>
               </div>
             </button>

@@ -132,7 +132,7 @@ export default function CoachPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 font-oswald px-4 py-10 md:px-12 relative overflow-hidden">
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-blue-500/10 dark:bg-cyan-500/5 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-150 h-150 bg-blue-500/10 dark:bg-cyan-500/5 rounded-full blur-[120px] pointer-events-none" />
 
       <div className="max-w-3xl mx-auto relative z-10">
         {/* Back */}
@@ -140,8 +140,18 @@ export default function CoachPage() {
           onClick={() => router.push("/dashboard")}
           className="flex items-center gap-2 text-gray-500 hover:text-blue-500 dark:hover:text-cyan-500 transition-colors italic tracking-widest uppercase mb-8 cursor-pointer"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M10 19l-7-7m0 0l7-7m-7 7h18"
+            />
           </svg>
           Return to Base
         </button>
@@ -152,7 +162,8 @@ export default function CoachPage() {
             AI Coach
           </span>
           <h1 className="text-3xl md:text-4xl italic font-bold text-gray-900 dark:text-white uppercase tracking-tight leading-none">
-            Build a <span className="text-blue-500 dark:text-cyan-500">Plan</span>
+            Build a{" "}
+            <span className="text-blue-500 dark:text-cyan-500">Plan</span>
           </h1>
         </div>
 
@@ -163,10 +174,18 @@ export default function CoachPage() {
             const active = i <= idx;
             return (
               <React.Fragment key={label}>
-                <span className={active ? "text-blue-500 dark:text-cyan-500" : "text-gray-400 dark:text-gray-600"}>
+                <span
+                  className={
+                    active
+                      ? "text-blue-500 dark:text-cyan-500"
+                      : "text-gray-400 dark:text-gray-600"
+                  }
+                >
                   {label}
                 </span>
-                {i < 2 && <span className="text-gray-300 dark:text-gray-700">—</span>}
+                {i < 2 && (
+                  <span className="text-gray-300 dark:text-gray-700">—</span>
+                )}
               </React.Fragment>
             );
           })}
@@ -175,7 +194,9 @@ export default function CoachPage() {
         {/* Error banner */}
         {error && (
           <div className="mb-6 p-3 bg-red-500/10 border border-red-500 rounded-sm text-center">
-            <p className="text-red-500 italic font-bold text-sm tracking-widest uppercase">{error}</p>
+            <p className="text-red-500 italic font-bold text-sm tracking-widest uppercase">
+              {error}
+            </p>
           </div>
         )}
 
@@ -217,7 +238,10 @@ export default function CoachPage() {
           <div className="flex flex-col gap-6">
             {classification && (
               <p className="text-xs text-gray-500 dark:text-gray-400 italic tracking-widest uppercase">
-                Detected: <span className="text-blue-500 dark:text-cyan-500">{classification.domain}</span>
+                Detected:{" "}
+                <span className="text-blue-500 dark:text-cyan-500">
+                  {classification.domain}
+                </span>
                 {" / "}
                 {classification.sub_domain}
               </p>
@@ -266,7 +290,8 @@ export default function CoachPage() {
                     {q.options.map((opt) => {
                       const selected =
                         q.type === "multi_select"
-                          ? Array.isArray(answers[q.key]) && answers[q.key].includes(opt)
+                          ? Array.isArray(answers[q.key]) &&
+                            answers[q.key].includes(opt)
                           : answers[q.key] === opt;
                       return (
                         <button
@@ -322,7 +347,9 @@ export default function CoachPage() {
                 {plan.goal.title}
               </h2>
               {plan.goal.description && (
-                <p className="text-sm text-gray-400 italic mb-3">{plan.goal.description}</p>
+                <p className="text-sm text-gray-400 italic mb-3">
+                  {plan.goal.description}
+                </p>
               )}
               {plan.goal.rationale && (
                 <p className="text-sm text-gray-300 leading-relaxed border-l-2 border-blue-500 dark:border-cyan-500 pl-3">
@@ -378,19 +405,22 @@ export default function CoachPage() {
                             </span>
                           )}
                         </div>
-                        {Array.isArray(s.sub_tasks) && s.sub_tasks.length > 0 && (
-                          <ul className="mt-1.5 flex flex-col gap-1">
-                            {s.sub_tasks.map((t, ti) => (
-                              <li
-                                key={ti}
-                                className="text-xs text-gray-500 dark:text-gray-400 flex items-start gap-2"
-                              >
-                                <span className="text-blue-500 dark:text-cyan-500 mt-0.5">›</span>
-                                {t.name}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
+                        {Array.isArray(s.sub_tasks) &&
+                          s.sub_tasks.length > 0 && (
+                            <ul className="mt-1.5 flex flex-col gap-1">
+                              {s.sub_tasks.map((t, ti) => (
+                                <li
+                                  key={ti}
+                                  className="text-xs text-gray-500 dark:text-gray-400 flex items-start gap-2"
+                                >
+                                  <span className="text-blue-500 dark:text-cyan-500 mt-0.5">
+                                    ›
+                                  </span>
+                                  {t.name}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
                       </div>
                     </div>
                   ))}
